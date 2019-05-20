@@ -372,6 +372,13 @@ if main['GCC'] or main['CLANG']:
                          '-Wno-error=deprecated-declarations',
                          '-Wno-error=deprecated',
                         ])
+    goo_protobuf = '-I/home/csl/cuc1057/gem5_dependencies/\
+google_protobuf/install/include'
+    main.Append(CCFLAGS = [goo_protobuf])
+    main.Append(CCFLAGS
+    = ['-L/home/csl/cuc1057/gem5_dependencies/\
+google_protobuf/install/lib -lprotobuf'])
+
 else:
     print(termcap.Yellow + termcap.Bold + 'Error' + termcap.Normal, end=' ')
     print("Don't know what compiler options to use for your compiler.")

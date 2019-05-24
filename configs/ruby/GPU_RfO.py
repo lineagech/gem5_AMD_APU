@@ -470,12 +470,16 @@ def create_system(options, full_system, system, dma_devices, bootmem,
         block_size_bits = int(math.log(options.cacheline_size, 2))
         numa_bit = block_size_bits + dir_bits - 1
 
+    print("GPU_Rfo: options.num_dirs ", options.num_dirs)
     for i in xrange(options.num_dirs):
         dir_ranges = []
         for r in system.mem_ranges:
+            print("dir%d "%(i), r.start, r.size())
             addr_range = m5.objects.AddrRange(r.start, size = r.size(),
-                                              intlvHighBit = numa_bit,
-                                              intlvBits = dir_bits,
+                                              #FIX_CHIA
+                                              #intlvHighBit == numa_bit,
+                                              intlvHighBit = numa_bit-dir_bits,
+                                              intlvBits = 0,#dir_bits,
                                               intlvMatch = i)
             dir_ranges.append(addr_range)
 
@@ -673,6 +677,7 @@ def create_system(options, full_system, system, dma_devices, bootmem,
         # SQC also in GPU cluster
         gpuCluster.add(sqc_cntrl)
 
+    print("GPU_Rfo: options.num_tccs ", options.num_tccs)
     for i in xrange(options.num_tccs):
 
         tcc_cntrl = TCCCntrl(TCC_select_num_bits = TCC_bits,

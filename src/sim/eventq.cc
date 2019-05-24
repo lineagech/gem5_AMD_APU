@@ -219,7 +219,8 @@ EventQueue::serviceOne()
         // the 'in bin' list and point to the next bin list
         head = head->nextBin;
     }
-
+    //DPRINTF(Checkpoint, "eventq ServiceOne event: %s\n",
+    //                     event->name().c_str());
     // handle action
     if (!event->squashed()) {
         // forward current cycle to the time when this event occurs.

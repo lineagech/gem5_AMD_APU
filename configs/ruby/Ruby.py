@@ -95,6 +95,8 @@ def setup_memory_controllers(system, ruby, dir_cntrls, options):
 
     if options.numa_high_bit:
         dir_bits = int(math.log(options.num_dirs, 2))
+        ## FIX_CHIA
+        dir_bits = 0;
         intlv_size = 2 ** (options.numa_high_bit - dir_bits + 1)
     else:
         # if the numa_bit is not specified, set the directory bits as the
@@ -105,30 +107,47 @@ def setup_memory_controllers(system, ruby, dir_cntrls, options):
     # attached to a directory controller.  A separate controller is created
     # for each address range as the abstract memory can handle only one
     # contiguous address range as of now.
+
+    ##FIX_CHIA: make one crossbar to connect two dir
+    ##instead of one crossbar for one dir originally
+    print("system.mem_ranges ", system.mem_ranges)
+    mem_index = 0
+    crossbar = IOXBar()
+    crossbars.append(crossbar)
+
     for dir_cntrl in dir_cntrls:
-        crossbar = None
+        #crossbar = None
         if len(system.mem_ranges) > 1:
-            crossbar = IOXBar()
-            crossbars.append(crossbar)
+            #crossbar = IOXBar()
+            #crossbars.append(crossbar)
             dir_cntrl.memory = crossbar.slave
 
         dir_ranges = []
-        for r in system.mem_ranges:
-            mem_ctrl = MemConfig.create_mem_ctrl(
-                MemConfig.get(options.mem_type), r, index, options.num_dirs,
-                int(math.log(options.num_dirs, 2)), intlv_size)
+        ## FIX_CHIA: just map one dir_ctrl to one mem range
+        #for r in system.mem_ranges:
+        mem_ctrl = MemConfig.create_mem_ctrl(
+                MemConfig.get(options.mem_type),
+                #r,
+                system.mem_ranges[mem_index],
+                index, options.num_dirs,
+                #int(math.log(options.num_dirs, 2)),
+                0,
+                intlv_size)
 
-            if options.access_backing_store:
-                mem_ctrl.kvm_map=False
+        #FIX_CHIA
+        mem_index += 1
 
-            mem_ctrls.append(mem_ctrl)
-            dir_ranges.append(mem_ctrl.range)
+        if options.access_backing_store:
+            mem_ctrl.kvm_map=False
 
-            if crossbar != None:
-                mem_ctrl.port = crossbar.master
-            else:
-                mem_ctrl.port = dir_cntrl.memory
+        mem_ctrls.append(mem_ctrl)
+        dir_ranges.append(mem_ctrl.range)
 
+        if crossbar != None:
+            mem_ctrl.port = crossbar.master
+        else:
+            mem_ctrl.port = dir_cntrl.memory
+        ################# original for loop end #################
         index += 1
         dir_cntrl.addr_ranges = dir_ranges
 
@@ -160,6 +179,7 @@ def create_system(options, full_system, system, piobus = None, dma_ports = [],
     ruby.network = network
 
     protocol = buildEnv['PROTOCOL']
+    print("protocol is ", protocol)
     exec "import %s" % protocol
     try:
         (cpu_sequencers, dir_cntrls, topology) = \

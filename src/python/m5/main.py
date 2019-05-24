@@ -211,6 +211,8 @@ def main(*args):
     else:
         raise TypeError, "main() takes 0 or 2 arguments (%d given)" % len(args)
 
+    ## chia
+    print("m5 args: ", args);
     m5.options = options
 
     def check_tracing():
@@ -411,6 +413,10 @@ def main(*args):
     filecode = compile(filedata, filename, 'exec')
     scope = { '__file__' : filename,
               '__name__' : '__m5_main__' }
+
+    ##chia
+    print("m5 main, filename : ", filename)
+    #print("m5 main, filendata: ", filedata)
 
     # if pdb was requested, execfile the thing under pdb, otherwise,
     # just do the execfile normally

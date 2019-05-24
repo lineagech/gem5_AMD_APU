@@ -629,6 +629,7 @@ TimingSimpleCPU::fetch()
         DPRINTF(SimpleCPU, "Translating address %#x\n", ifetch_req->getVaddr());
         thread->itb->translateTiming(ifetch_req, thread->getTC(),
                 &fetchTranslation, BaseTLB::Execute);
+        DPRINTF(SimpleCPU, "Physical address %#x\n", ifetch_req->getPaddr());
     } else {
         _status = IcacheWaitResponse;
         completeIfetch(NULL);
@@ -675,6 +676,11 @@ void
 TimingSimpleCPU::advanceInst(const Fault &fault)
 {
     SimpleExecContext &t_info = *threadInfo[curThread];
+
+    //chiahao
+    Addr next_inst = t_info.thread->nextInstAddr();
+    DPRINTF(SimpleCPU, "Next inst %x\n", next_inst);
+    (void)(next_inst);
 
     if (_status == Faulting)
         return;
@@ -742,6 +748,12 @@ TimingSimpleCPU::completeIfetch(PacketPtr pkt)
     if (curStaticInst && curStaticInst->isMemRef()) {
         // load or store: just send to dcache
         Fault fault = curStaticInst->initiateAcc(&t_info, traceData);
+
+        //chiahao
+        SimpleThread* thread = t_info.thread;
+        std::string format = "Execute " +
+                             curStaticInst->disassemble(thread->instAddr());
+        DPRINTF(SimpleCPU, "%s\n", format.c_str());
 
         // If we're not running now the instruction will complete in a dcache
         // response callback or the instruction faulted and has started an

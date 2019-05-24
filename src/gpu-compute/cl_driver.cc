@@ -47,6 +47,9 @@
 #include "sim/process.hh"
 #include "sim/syscall_emul_buf.hh"
 
+// FIXME
+#include "debug/ClDriver.hh"
+
 ClDriver::ClDriver(ClDriverParams *p)
     : EmulatedDriver(p), hsaCode(0)
 {
@@ -83,6 +86,7 @@ ClDriver::ClDriver(ClDriverParams *p)
         name_offs += k->name().size() + 1;
         code_offs += k->numInsts() * sizeof(TheGpuISA::RawMachInst);
     }
+    DPRINTF(ClDriver, "ClDriver initiated\n");
 }
 
 void
@@ -90,6 +94,8 @@ ClDriver::handshake(GpuDispatcher *_dispatcher)
 {
     dispatcher = _dispatcher;
     dispatcher->setFuncargsSize(maxFuncArgsSize);
+
+    DPRINTF(ClDriver, "ClDriver handshake\n");
 }
 
 int
@@ -98,6 +104,7 @@ ClDriver::open(Process *p, ThreadContext *tc, int mode, int flags)
     std::shared_ptr<DeviceFDEntry> fdp;
     fdp = std::make_shared<DeviceFDEntry>(this, filename);
     int tgt_fd = p->fds->allocFD(fdp);
+    DPRINTF(ClDriver, "ClDriver open %s\n", filename);
     return tgt_fd;
 }
 
@@ -106,6 +113,7 @@ ClDriver::ioctl(Process *process, ThreadContext *tc, unsigned req)
 {
     int index = 2;
     Addr buf_addr = process->getSyscallArg(tc, index);
+    DPRINTF(ClDriver, "ClDriver ioctl req : %d\n", req);
 
     switch (req) {
       case HSA_GET_SIZES:
@@ -264,6 +272,8 @@ ClDriver::codeOffToKernelName(uint64_t code_ptr)
 {
     assert(hsaCode);
     uint32_t code_offs = code_ptr - hsaCode;
+
+    DPRINTF(ClDriver, "ClDriver codeOffToKernelName\n");
 
     for (int i = 0; i < kernels.size(); ++i) {
         if (code_offs == kernelInfo[i].code_offs) {

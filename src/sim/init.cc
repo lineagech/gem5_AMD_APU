@@ -43,8 +43,6 @@
 
 #include <Python.h>
 
-#include "sim/init.hh"
-
 #include <marshal.h>
 #include <zlib.h>
 
@@ -56,14 +54,16 @@
 #include "base/logging.hh"
 #include "base/types.hh"
 #include "config/have_protobuf.hh"
+
+#if HAVE_PROTOBUF
+#include "google/protobuf/stubs/common.h"
+
+#endif
+#include "sim/init.hh"
+
 #include "python/pybind11/pybind.hh"
 #include "sim/async.hh"
 #include "sim/core.hh"
-
-#if HAVE_PROTOBUF
-#include <google/protobuf/stubs/common.h>
-
-#endif
 
 using namespace std;
 namespace py = pybind11;

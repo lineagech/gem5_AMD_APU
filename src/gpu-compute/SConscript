@@ -93,6 +93,9 @@ DebugFlag('HSAILObject')
 DebugFlag('Predictor')
 DebugFlag('WavefrontStack')
 
+## FIXME:
+DebugFlag('ClDriver')
+
 CompoundFlag('GPUALL', ['GPUCoalescer', 'GPUDisp', 'GPUExec', 'GPUFetch',
                         'GPUMem', 'GPUPort', 'GPUSync', 'GPUTLB', 'HSAIL',
                         'GPUVRF'])

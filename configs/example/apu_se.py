@@ -185,6 +185,9 @@ if not (options.cpu_type == "TimingSimpleCPU" or
    options.cpu_type == "DerivO3CPU"):
     fatal("GPU model requires TimingSimpleCPU or DerivO3CPU")
 
+##chia
+print("CPU type is ", options.cpu_type)
+
 # This file can support multiple compute units
 assert(options.num_compute_units >= 1)
 
@@ -299,6 +302,9 @@ if options.fast_forward and options.fast_forward_pseudo_op:
           " on pseudo-ops")
 fast_forward = options.fast_forward or options.fast_forward_pseudo_op
 
+##chia
+print("fast forward? ", fast_forward)
+
 if fast_forward:
     FutureCpuClass, future_mem_mode = CpuClass, mem_mode
 
@@ -337,6 +343,7 @@ for i in xrange(options.num_cp):
     cp_list.append(cp)
 
 # Main CPUs (to be used after fast-forwarding if fast-forwarding is specified).
+print("num_cpus: ", options.num_cpus)
 for i in xrange(options.num_cpus):
     cpu = MainCpuClass(cpu_id = i,
                        clk_domain = SrcClockDomain(
@@ -351,10 +358,15 @@ for i in xrange(options.num_cpus):
 
 ########################## Creating the GPU dispatcher ########################
 # Dispatcher dispatches work from host CPU to GPU
+print("cpu_list: ", cpu_list)
 host_cpu = cpu_list[0]
 dispatcher = GpuDispatcher()
 
-########################## Create and assign the workload ########################
+## created by chia-hao
+scga_dma = ScGaDma()
+
+
+####################### Create and assign the workload ########################
 # Check for rel_path in elements of base_list using test, returning
 # the first full path that satisfies test
 def find_path(base_list, rel_path, test):
@@ -390,12 +402,15 @@ else:
         fatal("Can't locate kernel code (.asm) in " + kernel_path)
 
 # OpenCL driver
+print("executable ", executable);
+
 driver = ClDriver(filename="hsa", codefile=kernel_files)
 for cpu in cpu_list:
     cpu.createThreads()
     cpu.workload = Process(executable = executable,
                            cmd = [options.cmd] + options.options.split(),
                            drivers = [driver])
+print("cp_list ", cp_list)
 for cp in cp_list:
     cp.workload = host_cpu.workload
 
@@ -413,12 +428,28 @@ if fast_forward:
 # Full list of processing cores in the system. Note that
 # dispatcher is also added to cpu_list although it is
 # not a processing element
-cpu_list = cpu_list + [shader] + cp_list + [dispatcher]
+cpu_list = cpu_list + [shader] + cp_list + [dispatcher] + [scga_dma]
 
 # creating the overall system
 # notice the cpu list is explicitly added as a parameter to System
+my_mem_range = [AddrRange([0,1024*1024*512-1]),
+                #AddrRange([0,1024*1024*512-1]),
+                AddrRange([1024*1024*512, 1024*1024*(512+512)-1]),
+                #AddrRange([1024*1024*512, 1024*1024*(512+512)-1])
+               ]
+#print("range = ", my_mem_range[0].start, my_mem_range[0].end)
+#my_mem_range[0].end += 1
+#my_mem_range[0].end //= 2
+#my_mem_range[0].end -= 1
+#my_mem_range[1].start = my_mem_range[0].end + 1
+#my_mem_range[1].end = my_mem_range[0].end * 2 + 1
+#print("range = ", my_mem_range[0].start, my_mem_range[0].end)
+#print("range = ", my_mem_range[1].start, my_mem_range[1].end)
+#sys.exit(0)
+
 system = System(cpu = cpu_list,
-                mem_ranges = [AddrRange(options.mem_size)],
+                #original: mem_ranges = [AddrRange(options.mem_size)],
+                mem_ranges = my_mem_range,
                 cache_line_size = options.cacheline_size,
                 mem_mode = mem_mode)
 if fast_forward:
@@ -474,10 +505,13 @@ for i in range(options.num_cpus):
 # the index as below, but note that this assumes there is one sequencer
 # per compute unit and one sequencer per SQC for the math to work out
 # correctly.
+
+print("len of ruby cpu ports: ", len(system.ruby._cpu_ports))
 gpu_port_idx = len(system.ruby._cpu_ports) \
                - options.num_compute_units - options.num_sqc
 gpu_port_idx = gpu_port_idx - options.num_cp * 2
 
+print("system.ruby._cpu_ports: ", system.ruby._cpu_ports)
 wavefront_size = options.wf_size
 for i in xrange(n_cu):
     # The pipeline issues wavefront_size number of uncoalesced requests
@@ -487,6 +521,7 @@ for i in xrange(n_cu):
                   system.ruby._cpu_ports[gpu_port_idx].slave[j]
     gpu_port_idx += 1
 
+print("gpu_port_idx: ", gpu_port_idx)
 for i in xrange(n_cu):
     if i > 0 and not i % options.cu_per_sqc:
         print("incrementing idx on ", i)
@@ -495,11 +530,21 @@ for i in xrange(n_cu):
             system.ruby._cpu_ports[gpu_port_idx].slave
 gpu_port_idx = gpu_port_idx + 1
 
+###prasanna:
+## check if this num_cp also contains gpu shader and dispatcher:
+### if so, change this assignment of ruby_cpu_ports only to the cpu core
+### for gpu - create another MemConfig.create_mem()
+### and assign that to this gpu shader core
+### and then run the hello world program - if it works -
+### have some debug statements in the MemConfig file figure out
+### how the dma is invoked between two memory components
+
 # attach CP ports to Ruby
 for i in xrange(options.num_cp):
     system.cpu[cp_idx].createInterruptController()
     system.cpu[cp_idx].dcache_port = \
                 system.ruby._cpu_ports[gpu_port_idx + i * 2].slave
+
     system.cpu[cp_idx].icache_port = \
                 system.ruby._cpu_ports[gpu_port_idx + i * 2 + 1].slave
     system.cpu[cp_idx].interrupts[0].pio = system.piobus.master
@@ -511,14 +556,21 @@ for i in xrange(options.num_cp):
 dispatcher.pio = system.piobus.master
 dispatcher.dma = system.piobus.slave
 
-################# Connect the CPU and GPU via GPU Dispatcher ###################
-# CPU rings the GPU doorbell to notify a pending task
-# using this interface.
-# And GPU uses this interface to notify the CPU of task completion
-# The communcation happens through emulated driver.
+scga_dma.pio = system.piobus.master
+#scga_dma.dma = system.piobus.slave
+scga_dma.dma = system.ruby.crossbars[0].slave
 
-# Note this implicit setting of the cpu_pointer, shader_pointer and tlb array
-# parameters must be after the explicit setting of the System cpu list
+#scga_dma.cpu_side_mem_port = system.mem_ctrls[0].port
+scga_dma.cpu_side_mem_port = system.ruby.crossbars[0].slave
+
+############### connect the cpu and gpu via gpu dispatcher ###################
+# cpu rings the gpu doorbell to notify a pending task
+# using this interface.
+# and gpu uses this interface to notify the cpu of task completion
+# the communcation happens through emulated driver.
+
+# note this implicit setting of the cpu_pointer, shader_pointer and tlb array
+# parameters must be after the explicit setting of the system cpu list
 if fast_forward:
     shader.cpu_pointer = future_cpu_list[0]
     dispatcher.cpu = future_cpu_list[0]
@@ -550,6 +602,8 @@ m5.instantiate(checkpoint_dir)
 
 # Map workload to this address space
 host_cpu.workload[0].map(0x10000000, 0x200000000, 4096)
+host_cpu.workload[0].map(0x20000000, 0x300000000, 4096)
+
 
 if options.fast_forward:
     print("Switch at instruction count: %d" % cpu_list[0].max_insts_any_thread)

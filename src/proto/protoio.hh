@@ -46,11 +46,13 @@
 #ifndef __PROTO_PROTOIO_HH__
 #define __PROTO_PROTOIO_HH__
 
-#include <google/protobuf/io/coded_stream.h>
-#include <google/protobuf/io/gzip_stream.h>
-#include <google/protobuf/io/zero_copy_stream_impl.h>
-#include <google/protobuf/message.h>
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/gzip_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl.h"
+#include "google/protobuf/message.h"
 
+//
+//
 #include <fstream>
 
 /**

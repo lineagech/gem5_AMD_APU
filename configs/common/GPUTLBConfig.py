@@ -97,8 +97,11 @@ def config_tlb_hierarchy(options, system, shader_idx):
     # < Modify here the width and the number of levels if you want a different configuration >
     # width is the number of TLBs of the given type (i.e., D-TLB, I-TLB etc) for this level
     L1 = [{'name': 'sqc', 'width': options.num_sqc, 'TLBarray': [], 'CoalescerArray': []},
-          {'name': 'dispatcher', 'width': 1, 'TLBarray': [], 'CoalescerArray': []},
-          {'name': 'l1', 'width': num_TLBs, 'TLBarray': [], 'CoalescerArray': []}]
+
+          {'name': 'dispatcher', 'width': 1,\
+           'TLBarray': [], 'CoalescerArray': []},
+          {'name': 'l1', 'width': num_TLBs, \
+           'TLBarray': [], 'CoalescerArray': []}]
 
     L2 = [{'name': 'l2', 'width': 1, 'TLBarray': [], 'CoalescerArray': []}]
     L3 = [{'name': 'l3', 'width': 1, 'TLBarray': [], 'CoalescerArray': []}]
@@ -171,7 +174,11 @@ def config_tlb_hierarchy(options, system, shader_idx):
                             system.l1_coalescer[%d].slave[%d]' % \
                             (shader_idx, cu_idx, tlb_per_cu, cu_idx / (n_cu / num_TLBs), cu_idx % (n_cu / num_TLBs)))
 
-        elif name == 'dispatcher': # Dispatcher TLB
+        elif name == 'dispatcher' and \
+             isinstance(system.cpu[dispatcher_idx], GpuDispatcher):
+            # Dispatcher TLB
+            #print("DIS:", isinstance(system.cpu[dispatcher_idx],\
+            #              GpuDispatcher))
             for index in range(TLB_type['width']):
                 exec('system.cpu[%d].translation_port = \
                         system.dispatcher_coalescer[%d].slave[0]' % \

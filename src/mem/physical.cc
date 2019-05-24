@@ -81,6 +81,11 @@ PhysicalMemory::PhysicalMemory(const string& _name,
 
     // add the memories from the system to the address map as
     // appropriate
+    // FIX_CHIA
+    //for (auto m : _memories) {
+    //    DPRINTF(AddrRanges, "%s PhysicalMemory %s\n", m->name(),
+    //                        m->getAddrRange().to_string().c_str());
+    //}
     for (const auto& m : _memories) {
         // only add the memory if it is part of the global address map
         if (m->isInAddrMap()) {
@@ -91,6 +96,9 @@ PhysicalMemory::PhysicalMemory(const string& _name,
 
             // add the range to our interval tree and make sure it does not
             // intersect an existing range
+
+            DPRINTF(AddrRanges, "(2) %s PhysicalMemory %s\n", m->name(),
+                                m->getAddrRange().to_string().c_str());
             fatal_if(addrMap.insert(m->getAddrRange(), m) == addrMap.end(),
                      "Memory address range for %s is overlapping\n",
                      m->name());
@@ -127,6 +135,9 @@ PhysicalMemory::PhysicalMemory(const string& _name,
         // not need any backing store
         if (!r.second->isNull()) {
             // if the range is interleaved then save it for now
+            DPRINTF(AddrRanges, "getConfAddrRanges: %s",
+                                r.first.to_string().c_str());
+
             if (r.first.interleaved()) {
                 // if we already got interleaved ranges that are not
                 // part of the same range, then first do a merge
@@ -235,6 +246,7 @@ PhysicalMemory::~PhysicalMemory()
 bool
 PhysicalMemory::isMemAddr(Addr addr) const
 {
+    DPRINTF(AddrRanges, "PhysicalMemory isMemAddr : %x\n", addr);
     return addrMap.contains(addr) != addrMap.end();
 }
 
@@ -278,6 +290,9 @@ void
 PhysicalMemory::access(PacketPtr pkt)
 {
     assert(pkt->isRequest());
+    //FIX_CHIA
+    DPRINTF(AddrRanges, "PhysicalMemory::access cmd %s\n",
+                        pkt->cmdString().c_str());
     AddrRange addr_range = RangeSize(pkt->getAddr(), pkt->getSize());
     const auto& m = addrMap.contains(addr_range);
     assert(m != addrMap.end());

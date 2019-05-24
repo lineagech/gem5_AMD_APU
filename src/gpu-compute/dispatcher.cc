@@ -160,6 +160,10 @@ GpuDispatcher::write(PacketPtr pkt)
     assert(pkt->getAddr() < pioAddr + pioSize);
 
     int offset = pkt->getAddr() - pioAddr;
+    DPRINTF(GPUDisp, "GpuDispatcher write cmd: %s\n",
+                     pkt->cmdString().c_str());
+    DPRINTF(GPUDisp, "GpuDispatcher write cmd: %#x\n",
+                     pkt->getAddr());
 
 #if TRACING_ON
     uint64_t data_val = 0;

@@ -1484,7 +1484,12 @@ class SimObject(object):
     def getCCParams(self):
         if self._ccParams:
             return self._ccParams
+        print("getCCParams: ")
+        print("\ttype: ", self.type)
 
+        # for n in sorted(self._children.keys()):
+        #    print("\tchildren name: ", self._children[n].get_name())
+        # print("all children are printed")
         cc_params_struct = getattr(m5.internal.params, '%sParams' % self.type)
         cc_params = cc_params_struct()
         cc_params.name = str(self)
@@ -1497,6 +1502,7 @@ class SimObject(object):
                 fatal("%s.%s without default or user set value",
                       self.path(), param)
 
+            #print(value, type(value), "are these making sense?")
             value = value.getValue()
             if isinstance(self._params[param], VectorParamDesc):
                 assert isinstance(value, list)

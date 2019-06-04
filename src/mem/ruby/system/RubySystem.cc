@@ -54,11 +54,17 @@ bool RubySystem::m_warmup_enabled = false;
 // To look forward to allowing multiple RubySystem instances, track the number
 // of RubySystems that need to be warmed up on checkpoint restore.
 unsigned RubySystem::m_systems_to_warmup = 0;
+
 bool RubySystem::m_cooldown_enabled = false;
+//FIX_CHIA-HAO
+//bool RubySystem::m_cooldown_enabled = true;
+
 
 RubySystem::RubySystem(const Params *p)
     : ClockedObject(p), m_access_backing_store(p->access_backing_store),
-      m_cache_recorder(NULL)
+      m_cache_recorder(NULL),
+      // FIX_CHIA-HAO
+      wrThrDma(p->wrThrDma)
 {
     m_randomization = p->randomization;
 

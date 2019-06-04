@@ -44,6 +44,9 @@
 #include "params/RubySystem.hh"
 #include "sim/clocked_object.hh"
 
+// FIX_CHIA-HAO
+#include "scga_dma/scga_dma.hh"
+
 class Network;
 class AbstractController;
 
@@ -138,6 +141,10 @@ class RubySystem : public ClockedObject
     Profiler* m_profiler;
     CacheRecorder* m_cache_recorder;
     std::vector<std::map<uint32_t, AbstractController *> > m_abstract_controls;
+
+    // FIX_CHIA-HAO
+    ScGaDma *wrThrDma;
+
 };
 
 class RubyStatsCallback : public Callback

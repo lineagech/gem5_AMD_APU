@@ -1,0 +1,6 @@
+Import('*')
+
+SimObject('SCGA_DMA.py')
+Source('scga_dma.cc')
+
+DebugFlag('ScGaDMA')

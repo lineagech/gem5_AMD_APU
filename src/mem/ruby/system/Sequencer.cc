@@ -496,6 +496,29 @@ Sequencer::hitCallback(SequencerRequest* srequest, DataBlock& data,
         }
     }
 
+    if (pkt->isWrite() && (mach == MachineType_L0Cache ||
+           mach == MachineType_L1Cache ||
+           mach == MachineType_L2Cache ||
+           mach == MachineType_L3Cache ) ) {
+
+        if (mach == MachineType_L0Cache )
+            DPRINTF(RubySequencer, "RubySequencer hit call back: L0Cache\n");
+        if (mach == MachineType_L1Cache )
+            DPRINTF(RubySequencer, "RubySequencer hit call back: L1Cache\n");
+        if (mach == MachineType_L2Cache )
+            DPRINTF(RubySequencer, "RubySequencer hit call back: L2Cache\n");
+        if (mach == MachineType_L3Cache )
+            DPRINTF(RubySequencer, "RubySequencer hit call back: L3Cache\n");
+
+        DPRINTF(RubySequencer, "RubySequencer pkt addr %x, size %u\n",
+                               pkt->getAddr(), pkt->getSize());
+        m_ruby_system->wrThrDma->writeThrOp(pkt->getAddr(),
+            pkt->getSize(),
+            pkt->getPtr<uint8_t>(),
+            static_cast<CacheType>(mach-MachineType_L0Cache));
+
+    }
+
     // If using the RubyTester, update the RubyTester sender state's
     // subBlock with the recieved data.  The tester will later access
     // this state.

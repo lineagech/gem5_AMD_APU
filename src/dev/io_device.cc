@@ -60,6 +60,9 @@ PioPort::recvAtomic(PacketPtr pkt)
     Tick receive_delay = pkt->headerDelay + pkt->payloadDelay;
     pkt->headerDelay = pkt->payloadDelay = 0;
 
+    DPRINTF(AddrRanges, "PioPort::recvAtomic receive_delay %u\n",
+                        receive_delay);
+
     const Tick delay(pkt->isRead() ? device->read(pkt) : device->write(pkt));
     assert(pkt->isResponse() || pkt->isError());
     return delay + receive_delay;

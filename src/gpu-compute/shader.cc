@@ -335,6 +335,7 @@ Shader::AccessMem(uint64_t address, void *ptr, uint32_t size, int cu_id,
                   MemCmd cmd, bool suppress_func_errors)
 {
     uint8_t *data_buf = (uint8_t*)ptr;
+    DPRINTF(HSAIL, "Shader:: AccessMem addr %x\n", address);
 
     for (ChunkGenerator gen(address, size, cuList.at(cu_id)->cacheLineSize());
          !gen.done(); gen.next()) {
@@ -394,6 +395,9 @@ Shader::functionalTLBAccess(PacketPtr pkt, int cu_id, BaseTLB::Mode mode)
         // it's ok tp send all accesses through lane 0
         // since the lane # is not known here,
         // This isn't important since these are functional accesses.
+
+        //DPRINTF(HSAIL, "Shader:: functionalTLBAccess addr %x\n",
+        //pkt->getAddr());
         cuList[cu_id]->tlbPort[0]->sendFunctional(pkt);
     }
 

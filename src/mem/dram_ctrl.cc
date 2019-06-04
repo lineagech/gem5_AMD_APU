@@ -2933,6 +2933,8 @@ DRAMCtrl::MemoryPort::getAddrRanges() const
 {
     AddrRangeList ranges;
     ranges.push_back(memory.getAddrRange());
+    DPRINTF(DRAM, "%s addr range is %s\n", name(),
+                  ranges.front().to_string());
     return ranges;
 }
 

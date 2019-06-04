@@ -133,6 +133,9 @@ NoncoherentXBar::recvTimingReq(PacketPtr pkt, PortID slave_port_id)
     // a request sees the frontend and forward latency
     Tick xbar_delay = (frontendLatency + forwardLatency) * clockPeriod();
 
+    DPRINTF(NoncoherentXBar, "NoncoherentXBar::recvTimingReq xbar_delay %u\n",
+                             xbar_delay);
+
     // set the packet header and payload delay
     calcPacketTiming(pkt, xbar_delay);
 

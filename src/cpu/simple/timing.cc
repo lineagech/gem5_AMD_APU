@@ -60,6 +60,9 @@
 #include "sim/full_system.hh"
 #include "sim/system.hh"
 
+//FIX_CHIA-HAO
+#include "scga_dma/scga_dma.hh"
+
 using namespace std;
 using namespace TheISA;
 
@@ -551,6 +554,15 @@ TimingSimpleCPU::writeMem(uint8_t *data, unsigned size,
             new DataTranslation<TimingSimpleCPU *>(this, state);
         thread->dtb->translateTiming(req, thread->getTC(), translation, mode);
     }
+
+    // FIX_CHIA-HAO
+    // Set translation for SCGA-DMA
+    ScGaDma *scga_dma = ScGaDma::getInstance();
+    scga_dma->setAddrTransRule(thread->contextId(), thread);
+    DPRINTF(SimpleCPU, "SimpleCPU:: flags %x, res %s\n", flags, res);
+    //scga_dma->AddrTransTest(addr, flags, dataMasterId());
+    DPRINTF(SimpleCPU, "SimpleCPU::writeMem addr: 0x%x, size %u\n",
+                       addr, size);
 
     // Translation faults will be returned via finishTranslation()
     return NoFault;

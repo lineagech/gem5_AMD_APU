@@ -291,6 +291,7 @@ cp_list = []
 cpu_list = []
 
 CpuClass, mem_mode = Simulation.getCPUClass(options.cpu_type)
+print(CpuClass)
 if CpuClass == AtomicSimpleCPU:
     fatal("AtomicSimpleCPU is not supported")
 if mem_mode != 'timing':
@@ -473,7 +474,7 @@ GPUTLBConfig.config_tlb_hierarchy(options, system, shader_idx)
 
 # create Ruby system
 system.piobus = IOXBar(width=32, response_latency=0,
-                       frontend_latency=0, forward_latency=0)
+                       frontend_latency=0, forward_latency=3)
 Ruby.create_system(options, None, system)
 system.ruby.clk_domain = SrcClockDomain(clock = options.ruby_clock,
                                     voltage_domain = system.voltage_domain)
@@ -556,12 +557,22 @@ for i in xrange(options.num_cp):
 dispatcher.pio = system.piobus.master
 dispatcher.dma = system.piobus.slave
 
+
+## FIX_CHIA-HAO
 scga_dma.pio = system.piobus.master
 #scga_dma.dma = system.piobus.slave
 scga_dma.dma = system.ruby.crossbars[0].slave
 
 #scga_dma.cpu_side_mem_port = system.mem_ctrls[0].port
 scga_dma.cpu_side_mem_port = system.ruby.crossbars[0].slave
+scga_dma.writeThrPort = system.ruby.crossbars[0].slave
+
+scga_dma.cpu = system.cpu[0]
+
+## FIX_CHIA-HAO
+system.ruby.wrThrDma = scga_dma
+
+
 
 ############### connect the cpu and gpu via gpu dispatcher ###################
 # cpu rings the gpu doorbell to notify a pending task

@@ -77,7 +77,13 @@ ComputeUnit::ComputeUnit(const Params *p) : MemObject(p), fetchStage(p),
     req_tick_latency(p->mem_req_latency * p->clk_domain->clockPeriod()),
     resp_tick_latency(p->mem_resp_latency * p->clk_domain->clockPeriod()),
     _masterId(p->system->getMasterId(this, "ComputeUnit")),
-    lds(*p->localDataStore), _cacheLineSize(p->system->cacheLineSize()),
+    lds(*p->localDataStore),
+    //FIX_CHIA-HAO
+    pageLoadingEvent([this]{ loadingCheck(); },
+                     "Check for loading completion",
+                     false,
+                     Event::CPU_Tick_Pri),
+    _cacheLineSize(p->system->cacheLineSize()),
     globalSeqNum(0), wavefrontSize(p->wfSize),
     kernelLaunchInst(new KernelLaunchStaticInst())
 {
@@ -1228,6 +1234,14 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
             computeUnit->cu_id, gpuDynInst->simdId,
             gpuDynInst->wfSlotId, mp_index, new_pkt->req->getPaddr());
 
+    // FIX_CHIA-HAO
+    computeUnit->memReqEvent.push(mem_req_event);
+    if (!computeUnit->pageLoadingEvent.scheduled())
+        computeUnit->schedule(computeUnit->pageLoadingEvent,
+                              curTick()+computeUnit->clockPeriod());
+    return true;
+    //////
+
     computeUnit->schedule(mem_req_event, curTick() +
                           computeUnit->req_tick_latency);
 
@@ -1906,5 +1920,20 @@ ComputeUnit::LDSPort::recvReqRetry()
             DPRINTF(GPUTLB, ": LDS send successful\n");
             retries.pop();
         }
+    }
+}
+
+// FIX_CHIA-HAO
+void
+ComputeUnit::loadingCheck()
+{
+    DPRINTF(GPUPort, "%s\n", __func__);
+    auto reqSize = memReqEvent.size();
+
+    for (int i=0; i<reqSize; i++) {
+        auto event = memReqEvent.front();
+        memReqEvent.pop();
+        this->schedule(event, curTick() +
+                         req_tick_latency);
     }
 }

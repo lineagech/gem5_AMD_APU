@@ -226,6 +226,12 @@ class TLBCoalescer : public MemObject
     // this FIFO queue keeps track of the virt. page
     // addresses that are pending cleanup
     std::queue<Addr> cleanupQueue;
+
+    // FIX_CHIA-HAO
+    std::unordered_map<Addr,PacketPtr> quePacketsForLoading;
+    std::vector<Addr> queuedAddr;
+    EventFunctionWrapper pageLoadingEvent;
+    void processLoadingEvent();
 };
 
 #endif // __TLB_COALESCER_HH__

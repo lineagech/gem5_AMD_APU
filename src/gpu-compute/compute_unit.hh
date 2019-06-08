@@ -741,6 +741,11 @@ class ComputeUnit : public MemObject
 
     uint64_t getAndIncSeqNum() { return globalSeqNum++; }
 
+    // FIX_CHIA-HAO
+    std::queue<EventFunctionWrapper*> memReqEvent;
+    EventFunctionWrapper pageLoadingEvent;
+    void loadingCheck();
+
   private:
     const int _cacheLineSize;
     uint64_t globalSeqNum;

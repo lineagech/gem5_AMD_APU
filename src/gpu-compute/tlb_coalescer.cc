@@ -36,9 +36,12 @@
 #include "gpu-compute/tlb_coalescer.hh"
 
 #include <cstring>
+#include <utility>
 
 #include "base/logging.hh"
+#include "debug/GPUDataLoader.hh"
 #include "debug/GPUTLB.hh"
+#include "gpu_data_loader/gpu_data_loader.hh"
 #include "sim/process.hh"
 
 TLBCoalescer::TLBCoalescer(const Params *p)
@@ -52,7 +55,11 @@ TLBCoalescer::TLBCoalescer(const Params *p)
                     false, Event::CPU_Tick_Pri),
       cleanupEvent([this]{ processCleanupEvent(); },
                    "Cleanup issuedTranslationsTable hashmap",
-                   false, Event::Maximum_Pri)
+                   false, Event::Maximum_Pri),
+      // FIX_CHIA-HAO
+      pageLoadingEvent([this]{ processLoadingEvent(); },
+                       "When starting to load the page, routine check",
+                       false, Event::CPU_Tick_Pri)
 {
     // create the slave ports based on the number of connected ports
     for (size_t i = 0; i < p->port_slave_connection_count; ++i) {
@@ -208,6 +215,7 @@ TLBCoalescer::updatePhysAddresses(PacketPtr pkt)
             // (used for statistics in the CUs)
             sender_state->hitLevel = first_hit_level;
         }
+
 
         SlavePort *return_port = sender_state->ports.back();
         sender_state->ports.pop_back();
@@ -378,8 +386,74 @@ TLBCoalescer::CpuSidePort::getAddrRanges() const
 bool
 TLBCoalescer::MemSidePort::recvTimingResp(PacketPtr pkt)
 {
-    // a translation completed and returned
-    coalescer->updatePhysAddresses(pkt);
+    /* FIX_CHIA-HAO
+     * If here is L1 TLB coalescer, and this is the response from L1 TLB,
+     * we need to check the hash map first to check the responded address
+     * is mapped to the GPU dedicated memory. If yes, just go head.
+     * If not, use GpuDataLoader to load a entire page for the physical address
+     * from CPU to GPU. Keeping waiting for the completion of data loading, and
+     * return false.
+     * */
+    GpuDataLoader *gpuDataLoader = GpuDataLoader::getInstance();
+    //(void)(gpuDataLoader);
+
+    DPRINTF(GPUDataLoader,
+            "TLBCoalescer::recvTimingResp, %s: Vaddr %#x -> Paddr %#x\n",
+            name(), pkt->req->getVaddr(), pkt->req->getPaddr());
+
+    std::string coalescer_name = name();
+    if (coalescer_name.find("l1_coalescer") != std::string::npos) {
+        Addr virt_page_addr = roundDown(pkt->req->getVaddr(),
+                                        TheISA::PageBytes);
+        DPRINTF(GPUDataLoader,
+                "TLBCoalescer:: virt_page_addr is %#x\n",
+                virt_page_addr);
+
+        GpuDataLoader::GpuDataLoaderState state
+            = gpuDataLoader->getState(virt_page_addr);
+        bool isPageProcessed = gpuDataLoader->isPageLoaded(virt_page_addr);
+        (void)(isPageProcessed);
+        (void)(state);
+        /* if the page has not already loaded to GPU */
+        //if ( !isPageProcessed
+        //     || (isPageProcessed && state == GpuDataLoader::Loading) ) {
+        if (true) {
+            if (!isPageProcessed) {
+                /* the first one to request to load the page to GPU */
+                DPRINTF(GPUDataLoader,
+                        "TLBCoalescer:: starting to load missing page\n");
+                //gpuDataLoader->loadPageFromCPU(virt_page_addr);
+            }
+            else {
+                DPRINTF(GPUDataLoader,
+                        "TLBCoalescer:: missing page is loading\n");
+            }
+            /* schedule a checking function to
+             * make sure data loading is done */
+            if (!coalescer->pageLoadingEvent.scheduled()) {
+                DPRINTF(GPUDataLoader,
+                        "Schedule pageLoadingEvent\n");
+                coalescer->schedule(coalescer->pageLoadingEvent,
+                                    curTick() + 0/*coalescer->ticks(1)*/);
+            }
+            coalescer->quePacketsForLoading[virt_page_addr] = pkt;
+
+
+            coalescer->queuedAddr.push_back(virt_page_addr);
+
+            //return false;
+            //
+
+            //coalescer->updatePhysAddresses(pkt);
+        }
+    }
+    else {
+        DPRINTF(GPUDataLoader, "not a l1 coalescer, instead %s\n", name());
+
+        // a translation completed and returned
+        coalescer->updatePhysAddresses(pkt);
+    }
+
 
     return true;
 }
@@ -527,6 +601,37 @@ TLBCoalescer::processCleanupEvent()
 
         DPRINTF(GPUTLB, "Cleanup - Delete coalescer entry with key %#x\n",
                 cleanup_addr);
+    }
+}
+
+// FIX_CHIA-HAO
+void TLBCoalescer::processLoadingEvent()
+{
+    auto queue_size = queuedAddr.size();
+    /*
+    GpuDataLoader *gpuDataLoader = GpuDataLoader::getInstance();
+    Addr virt_page_addr;
+    PacketPtr queued_pkt;
+
+    DPRINTF(GPUDataLoader, "processLoading at tick %lu\n", curTick());
+
+    virt_page_addr = queuedAddr.back();
+    queuedAddr.pop_back();
+    queued_pkt = quePacketsForLoading[virt_page_addr];
+    (void)(queued_pkt);
+
+    if (gpuDataLoader->getState(virt_page_addr) == GpuDataLoader::Loading) {
+        this->schedule(pageLoadingEvent,
+                       curTick() + ticks(1));
+    } else {
+        this->updatePhysAddresses(queued_pkt);
+    }
+    */
+    for (int i=0; i<queue_size; i++) {
+        Addr virt_page_addr = queuedAddr.back();
+        queuedAddr.pop_back();
+        PacketPtr queued_pkt = quePacketsForLoading[virt_page_addr];
+        updatePhysAddresses(queued_pkt);
     }
 }
 

@@ -365,7 +365,7 @@ dispatcher = GpuDispatcher()
 
 ## created by chia-hao
 scga_dma = ScGaDma()
-
+gpu_data_loader = GpuDataLoader()
 
 ####################### Create and assign the workload ########################
 # Check for rel_path in elements of base_list using test, returning
@@ -429,13 +429,15 @@ if fast_forward:
 # Full list of processing cores in the system. Note that
 # dispatcher is also added to cpu_list although it is
 # not a processing element
-cpu_list = cpu_list + [shader] + cp_list + [dispatcher] + [scga_dma]
+cpu_list = \
+cpu_list + [shader] + cp_list + [dispatcher] + [scga_dma] + [gpu_data_loader]
+
 
 # creating the overall system
 # notice the cpu list is explicitly added as a parameter to System
-my_mem_range = [AddrRange([0,1024*1024*512-1]),
+my_mem_range = [AddrRange([0,1024*1024*1024*4-1]),
                 #AddrRange([0,1024*1024*512-1]),
-                AddrRange([1024*1024*512, 1024*1024*(512+512)-1]),
+                AddrRange([1024*1024*1024*4, 1024*1024*1024*8-1]),
                 #AddrRange([1024*1024*512, 1024*1024*(512+512)-1])
                ]
 #print("range = ", my_mem_range[0].start, my_mem_range[0].end)
@@ -478,6 +480,8 @@ system.piobus = IOXBar(width=32, response_latency=0,
 Ruby.create_system(options, None, system)
 system.ruby.clk_domain = SrcClockDomain(clock = options.ruby_clock,
                                     voltage_domain = system.voltage_domain)
+
+
 
 # attach the CPU ports to Ruby
 for i in range(options.num_cpus):
@@ -569,10 +573,12 @@ scga_dma.writeThrPort = system.ruby.crossbars[0].slave
 
 scga_dma.cpu = system.cpu[0]
 
-## FIX_CHIA-HAO
+gpu_data_loader.cpu_side_mem_port = system.ruby.crossbars[0].slave
+gpu_data_loader.gpu_side_mem_port = system.ruby.crossbars[0].slave
+#gpu_data_loader.sys = system
+
 system.ruby.wrThrDma = scga_dma
-
-
+print("Memory Controllers: ",system.mem_ctrls)
 
 ############### connect the cpu and gpu via gpu dispatcher ###################
 # cpu rings the gpu doorbell to notify a pending task

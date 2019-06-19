@@ -335,7 +335,8 @@ Shader::AccessMem(uint64_t address, void *ptr, uint32_t size, int cu_id,
                   MemCmd cmd, bool suppress_func_errors)
 {
     uint8_t *data_buf = (uint8_t*)ptr;
-    DPRINTF(HSAIL, "Shader:: AccessMem addr %x\n", address);
+    DPRINTF(HSAIL, "Shader:: AccessMem addr %x with Master ID %u\n",
+                   address, cuList[0]->masterId());
 
     for (ChunkGenerator gen(address, size, cuList.at(cu_id)->cacheLineSize());
          !gen.done(); gen.next()) {
@@ -359,7 +360,8 @@ void
 Shader::ReadMem(uint64_t address, void *ptr, uint32_t size, int cu_id,
                 bool suppress_func_errors)
 {
-    AccessMem(address, ptr, size, cu_id, MemCmd::ReadReq, suppress_func_errors);
+    AccessMem(address, ptr, size, cu_id,
+              MemCmd::ReadReq, suppress_func_errors);
 }
 
 void

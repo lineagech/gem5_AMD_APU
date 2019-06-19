@@ -44,7 +44,9 @@
 #include "gpu-compute/cl_event.hh"
 #include "gpu-compute/shader.hh"
 #include "gpu-compute/wavefront.hh"
+#include "gpu_data_loader/gpu_data_loader.hh"
 #include "mem/packet_access.hh"
+#include "scga_dma/scga_dma.hh"
 
 GpuDispatcher *GpuDispatcher::instance = nullptr;
 
@@ -273,6 +275,15 @@ GpuDispatcher::exec()
     // There are potentially multiple outstanding kernel launches.
     // It is possible that the workgroups in a different kernel
     // can fit on the GPU even if another kernel's workgroups cannot
+
+    // FIX_CHIA-HAO: check is evicting now?
+    GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+    if (gpuDataLoader->isEvictingAll() &&
+        !gpuDataLoader->isEvictAllDone()) {
+        return;
+    }
+    ////////////////////////////////////////////
+
     DPRINTF(GPUDisp, "Launching %d Kernels\n", execIds.size());
 
     while (execIds.size() > fail_count) {
@@ -343,6 +354,16 @@ GpuDispatcher::notifyWgCompl(Wavefront *w)
         }
     }
 
+    // FIX_CHIA-HAO: evict pages of gpu
+    if (ndRangeMap[kern_id].execDone) {
+        //GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+        //gpuDataLoader->evictAllPages();
+        EventFunctionWrapper* evictEvent = createEvictCheckEvent(kern_id);
+        schedule(evictEvent, curTick() + shader->ticks(1));
+        return;
+    }
+    /////////////////////////////////////
+
     if (!tickEvent.scheduled()) {
         schedule(&tickEvent, curTick() + shader->ticks(1));
     }
@@ -395,3 +416,38 @@ GpuDispatcher::getStaticContextSize() const
 {
     return shader->cuList[0]->wfList[0][0]->getStaticContextSize();
 }
+
+// FIX_CHIA-HAO:
+EventFunctionWrapper*
+GpuDispatcher::createEvictCheckEvent(int kern_id)
+{
+    return new EventFunctionWrapper(
+        [this, kern_id]{ checkEvictGpuDone(kern_id); },
+        "Check evict event is done", true
+    );
+}
+
+void
+GpuDispatcher::checkEvictGpuDone(int kern_id)
+{
+    ScGaDma* scgaDma = ScGaDma::getInstance();
+    GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+
+    // check if all write through is done
+    if (!scgaDma->writeThrReqPending()) {
+        if (!gpuDataLoader->isEvictingAll() &&
+            !gpuDataLoader->isEvictAllDone()) {
+            gpuDataLoader->evictAllPages();
+        }
+        else if (!gpuDataLoader->isEvictingAll() &&
+                 gpuDataLoader->isEvictAllDone()) {
+            scheduleDispatch();
+            return;
+        }
+    }
+
+    EventFunctionWrapper* evictEvent = createEvictCheckEvent(kern_id);
+    schedule(evictEvent, curTick() + shader->ticks(1));
+
+}
+/////////////////

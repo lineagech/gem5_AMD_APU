@@ -39,6 +39,7 @@
 #include <limits>
 
 #include "base/output.hh"
+#include "debug/GPUDataLoader.hh"
 #include "debug/GPUDisp.hh"
 #include "debug/GPUExec.hh"
 #include "debug/GPUFetch.hh"
@@ -55,6 +56,7 @@
 #include "gpu-compute/simple_pool_manager.hh"
 #include "gpu-compute/vector_register_file.hh"
 #include "gpu-compute/wavefront.hh"
+#include "gpu_data_loader/gpu_data_loader.hh"
 #include "mem/page_table.hh"
 #include "sim/process.hh"
 
@@ -309,7 +311,8 @@ ComputeUnit::startWavefront(Wavefront *w, int waveId, LdsChunk *ldsChunk,
     }
 
     DPRINTF(GPUDisp, "Scheduling wfDynId/barrier_id %d/%d on CU%d: "
-            "WF[%d][%d]\n", _n_wave, barrier_id, cu_id, w->simdId, w->wfSlotId);
+            "WF[%d][%d]\n", _n_wave, barrier_id,
+            cu_id, w->simdId, w->wfSlotId);
 
     w->start(++_n_wave, ndr->q.code_ptr);
 }
@@ -445,9 +448,11 @@ ComputeUnit::ReadyWorkgroup(NDRange *ndr)
     }
 
     // Return true if (a) there are enough free WF slots to submit
-    // workgrounp and (b) if there are enough VGPRs to schedule all WFs to their
+    // workgrounp and (b) if there are enough VGPRs to
+    // schedule all WFs to their
     // SIMD units and (c) if there is enough space in LDS
-    return freeWfSlots >= numWfs && vregAvail && lds.canReserve(ndr->q.ldsSize);
+    return freeWfSlots >= numWfs && vregAvail
+           && lds.canReserve(ndr->q.ldsSize);
 }
 
 int
@@ -504,7 +509,8 @@ ComputeUnit::cedeSIMD(int simdId, int wfSlotId)
          * if it is at the head of a per address queue.
          */
         for (auto itMap : xactCasLoadMap) {
-            std::list<waveIdentifier> curWaveIDQueue = itMap.second.waveIDQueue;
+            std::list<waveIdentifier> curWaveIDQueue
+                = itMap.second.waveIDQueue;
 
             if (!curWaveIDQueue.empty()) {
                 for (auto it : curWaveIDQueue) {
@@ -675,12 +681,28 @@ ComputeUnit::DataPort::recvTimingResp(PacketPtr pkt)
         return true;
     }
 
+    // FIX_CHIA-HAO: restore back to original address
+    //if (pkt->cmd == MemCmd::ReadReq) {
+    GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+    pkt->req->setPaddr(gpuDataLoader->getCpuPageAddr(pkt->req->getPaddr()));
+    if (pkt->isWrite()) {
+        gpuDataLoader->setPageStatus(pkt->getAddr(), GpuDataLoader::Dirty);
+    }
+    //}
+
     EventFunctionWrapper *mem_resp_event =
         computeUnit->memPort[index]->createMemRespEvent(pkt);
 
-    DPRINTF(GPUPort, "CU%d: WF[%d][%d]: index %d, addr %#x received!\n",
+    DPRINTF(GPUPort, "cu%d: wf[%d][%d]: index %d, addr %#x received!\n",
             computeUnit->cu_id, gpuDynInst->simdId, gpuDynInst->wfSlotId,
             index, pkt->req->getPaddr());
+
+    // FIX_CHIA-HAO: print the content to check
+    uint8_t* debug_data = pkt->getPtr<uint8_t>();
+    DPRINTF(GPUDataLoader, "contents: %c %c %c %c %c\n",
+                           debug_data[0], debug_data[1],
+                           debug_data[2], debug_data[3], debug_data[4]);
+    ///////////////////////////////////////////
 
     computeUnit->schedule(mem_resp_event,
                           curTick() + computeUnit->resp_tick_latency);
@@ -842,8 +864,9 @@ ComputeUnit::sendRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
 
 
             // New SenderState for the memory access
-            pkt->senderState = new ComputeUnit::DataPort::SenderState(gpuDynInst,
-                                                             index, nullptr);
+            pkt->senderState
+                = new ComputeUnit::DataPort::SenderState(gpuDynInst,
+                                                         index, nullptr);
 
             gpuDynInst->memStatusVector[pkt->getAddr()].push_back(index);
             gpuDynInst->tlbHitLevel[index] = hit_level;
@@ -863,7 +886,8 @@ ComputeUnit::sendRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
             assert(tlbPort[tlbPort_index]->retries.size() > 0);
 
             DPRINTF(GPUTLB, "CU%d: WF[%d][%d]: Translation for addr %#x "
-                    "failed!\n", cu_id, gpuDynInst->simdId, gpuDynInst->wfSlotId,
+                    "failed!\n", cu_id, gpuDynInst->simdId,
+                    gpuDynInst->wfSlotId,
                     tmp_vaddr);
 
             tlbPort[tlbPort_index]->retries.push_back(pkt);
@@ -875,7 +899,8 @@ ComputeUnit::sendRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
             tlbPort[tlbPort_index]->stallPort();
 
             DPRINTF(GPUTLB, "CU%d: WF[%d][%d]: Translation for addr %#x "
-                    "failed!\n", cu_id, gpuDynInst->simdId, gpuDynInst->wfSlotId,
+                    "failed!\n", cu_id, gpuDynInst->simdId,
+                    gpuDynInst->wfSlotId,
                     tmp_vaddr);
 
             tlbPort[tlbPort_index]->retries.push_back(pkt);
@@ -926,15 +951,18 @@ ComputeUnit::sendRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
 }
 
 void
-ComputeUnit::sendSyncRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
+ComputeUnit::sendSyncRequest(GPUDynInstPtr gpuDynInst,
+                             int index,
+                             PacketPtr pkt)
 {
     EventFunctionWrapper *mem_req_event =
         memPort[index]->createMemReqEvent(pkt);
 
 
     // New SenderState for the memory access
-    pkt->senderState = new ComputeUnit::DataPort::SenderState(gpuDynInst, index,
-                                                              nullptr);
+    pkt->senderState
+        = new ComputeUnit::DataPort::SenderState(gpuDynInst, index,
+                                                 nullptr);
 
     DPRINTF(GPUPort, "CU%d: WF[%d][%d]: index %d, addr %#x sync scheduled\n",
             cu_id, gpuDynInst->simdId, gpuDynInst->wfSlotId, index,
@@ -1195,8 +1223,8 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
             // Because it's atomic operation, only need TLB translation state
             prefetch_pkt->senderState =
                 new TheISA::GpuTLB::TranslationState(TLB_mode,
-                                                     computeUnit->shader->gpuTc,
-                                                     true);
+                    computeUnit->shader->gpuTc,
+                    true);
 
             // Currently prefetches are zero-latency, hence the sendFunctional
             sendFunctional(prefetch_pkt);
@@ -1211,6 +1239,14 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
             delete tlb_state;
             delete prefetch_pkt;
         }
+    }
+
+    // FIX_CHIA-HAO: set GPU address
+    if (requestCmd == MemCmd::ReadReq || requestCmd == MemCmd::WriteReq) {
+        GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+        pkt->req->setPaddr(
+            gpuDataLoader->getGpuPageAddr(pkt->req->getPaddr())
+        );
     }
 
     // First we must convert the response cmd back to a request cmd so that
@@ -1235,11 +1271,15 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
             gpuDynInst->wfSlotId, mp_index, new_pkt->req->getPaddr());
 
     // FIX_CHIA-HAO
-    computeUnit->memReqEvent.push(mem_req_event);
-    if (!computeUnit->pageLoadingEvent.scheduled())
-        computeUnit->schedule(computeUnit->pageLoadingEvent,
-                              curTick()+computeUnit->clockPeriod());
-    return true;
+    DPRINTF(GPUPort, "Req %u\n", requestCmd==MemCmd::WriteReq);
+    DDUMP(GPUPort, new_pkt->getPtr<uint8_t>(), new_pkt->getSize());
+    if (requestCmd == MemCmd::ReadReq || requestCmd == MemCmd::WriteReq) {
+        computeUnit->memReqEvent.push({line,mem_req_event});
+        if (!computeUnit->pageLoadingEvent.scheduled())
+            computeUnit->schedule(computeUnit->pageLoadingEvent,
+                                  curTick()+computeUnit->clockPeriod());
+        return true;
+    }
     //////
 
     computeUnit->schedule(mem_req_event, curTick() +
@@ -1270,6 +1310,9 @@ ComputeUnit::DataPort::processMemReqEvent(PacketPtr pkt)
     SenderState *sender_state = safe_cast<SenderState*>(pkt->senderState);
     GPUDynInstPtr gpuDynInst = sender_state->_gpuDynInst;
     ComputeUnit *compute_unit M5_VAR_USED = computeUnit;
+
+    // FIX_CHIA-HAO
+    DPRINTF(GPUDataLoader, "%s for addr %#x\n", __func__, pkt->getAddr());
 
     if (!(sendTimingReq(pkt))) {
         retries.push_back(std::make_pair(pkt, gpuDynInst));
@@ -1336,7 +1379,7 @@ ComputeUnit::ITLBPort::recvTimingResp(PacketPtr pkt)
 
     // pop off the TLB translation state
     TheISA::GpuTLB::TranslationState *translation_state =
-                 safe_cast<TheISA::GpuTLB::TranslationState*>(pkt->senderState);
+        safe_cast<TheISA::GpuTLB::TranslationState*>(pkt->senderState);
 
     bool success = translation_state->tlbEntry != nullptr;
     delete translation_state->tlbEntry;
@@ -1637,7 +1680,8 @@ ComputeUnit::regStats()
 
     numTimesWgBlockedDueVgprAlloc
         .name(name() + ".times_wg_blocked_due_vgpr_alloc")
-        .desc("Number of times WGs are blocked due to VGPR allocation per SIMD")
+        .desc("Number of times WGs are blocked due to "
+              "VGPR allocation per SIMD")
         ;
 
     dynamicGMemInstrCnt
@@ -1761,7 +1805,8 @@ ComputeUnit::isDone() const
 
     if (!globalMemoryPipe.isGMLdRespFIFOWrRdy() ||
         !globalMemoryPipe.isGMStRespFIFOWrRdy() ||
-        !globalMemoryPipe.isGMReqFIFOWrRdy() || !localMemoryPipe.isLMReqFIFOWrRdy()
+        !globalMemoryPipe.isGMReqFIFOWrRdy() ||
+        !localMemoryPipe.isLMReqFIFOWrRdy()
         || !localMemoryPipe.isLMRespFIFOWrRdy() || !locMemToVrfBus.rdy() ||
         !glbMemToVrfBus.rdy() || !locMemBusRdy || !glbMemBusRdy) {
         return false;
@@ -1771,7 +1816,8 @@ ComputeUnit::isDone() const
 }
 
 int32_t
-ComputeUnit::getRefCounter(const uint32_t dispatchId, const uint32_t wgId) const
+ComputeUnit::getRefCounter(const uint32_t dispatchId,
+                           const uint32_t wgId) const
 {
     return lds.getRefCounter(dispatchId, wgId);
 }
@@ -1927,13 +1973,40 @@ ComputeUnit::LDSPort::recvReqRetry()
 void
 ComputeUnit::loadingCheck()
 {
-    DPRINTF(GPUPort, "%s\n", __func__);
+    GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
     auto reqSize = memReqEvent.size();
 
     for (int i=0; i<reqSize; i++) {
         auto event = memReqEvent.front();
-        memReqEvent.pop();
-        this->schedule(event, curTick() +
-                         req_tick_latency);
+        Addr page_addr = roundDown(event.first, TheISA::PageBytes);
+        EventFunctionWrapper *cb_event = event.second;
+        GpuDataLoader::GpuDataLoaderState state =
+            gpuDataLoader->getState(page_addr);
+        bool isPageProcessed =
+            gpuDataLoader->isPageLoaded(page_addr);
+
+        //DPRINTF(GPUDataLoader, "%s: Handling memReqEvent addr %#x\n",
+        //                       __func__, event.first);
+
+        if (!isPageProcessed ||
+            (isPageProcessed && state == GpuDataLoader::Loading)) {
+            if (!isPageProcessed) {
+                //DPRINTF(GPUDataLoader,
+                //        "ComputeUnit:: starting to load missing page\n");
+                gpuDataLoader->loadPageFromCPU(page_addr);
+            }
+            else {
+                //DPRINTF(GPUDataLoader,
+                //        "ComputeUnit:: missing page is still loading\n");
+            }
+        }
+        else {
+            this->schedule(cb_event, curTick() + req_tick_latency);
+            memReqEvent.pop();
+        }
+
     }
+    if ( memReqEvent.size() > 0 && !pageLoadingEvent.scheduled())
+        schedule(pageLoadingEvent, curTick()+clockPeriod());
+
 }

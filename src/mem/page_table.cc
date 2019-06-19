@@ -64,6 +64,8 @@ EmulationPageTable::map(Addr vaddr, Addr paddr, int64_t size, uint64_t flags)
             it->second = Entry(paddr, flags);
         } else {
             pTable.emplace(vaddr, Entry(paddr, flags));
+            DPRINTF(MMU, "PageTable: map vaddr %#x to paddr %#x\n",
+                         vaddr, paddr);
         }
 
         size -= pageSize;

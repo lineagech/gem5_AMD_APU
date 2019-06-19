@@ -40,6 +40,8 @@
 #include "mem/port_proxy.hh"
 
 #include "base/chunk_generator.hh"
+#include "gpu_data_loader/gpu_data_loader.hh"
+#include "mem/abstract_mem.hh"
 
 void
 PortProxy::readBlobPhys(Addr addr, Request::Flags flags,
@@ -71,6 +73,36 @@ PortProxy::writeBlobPhys(Addr addr, Request::Flags flags,
         Packet pkt(req, MemCmd::WriteReq);
         pkt.dataStaticConst(p);
         _port.sendFunctional(&pkt);
+
+        // FIX_CHIA-HAO
+        GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+        if (!gpuDataLoader->isSetAbstractMem) {
+            uint8_t *ruby_phys_mem
+                = AbstractMemory::getAbstractMem("system.ruby.phys_mem");
+            uint8_t *mem_ctrls0_mem
+                = AbstractMemory::getAbstractMem("system.mem_ctrls0");
+            uint8_t *mem_ctrls1_mem
+                = AbstractMemory::getAbstractMem("system.mem_ctrls1");
+            AddrRange ruby_phys_mem_range
+                = AbstractMemory::getAbstractMemRange("system.ruby.phys_mem");
+            AddrRange mem_ctrls0_mem_range
+                = AbstractMemory::getAbstractMemRange("system.mem_ctrls0");
+            AddrRange mem_ctrls1_mem_range
+                = AbstractMemory::getAbstractMemRange("system.mem_ctrls1");
+
+            gpuDataLoader->setAbstractMem("system.ruby.phys_mem",
+                                          ruby_phys_mem,
+                                          ruby_phys_mem_range);
+            gpuDataLoader->setAbstractMem("system.mem_ctrls0",
+                                          mem_ctrls0_mem,
+                                          mem_ctrls0_mem_range);
+            gpuDataLoader->setAbstractMem("system.mem_ctrls1",
+                                          mem_ctrls1_mem,
+                                          mem_ctrls1_mem_range);
+        }
+        gpuDataLoader->syncToMainMem(gen.addr(), p, gen.size());
+        ///////////////
+
         p += gen.size();
     }
 }

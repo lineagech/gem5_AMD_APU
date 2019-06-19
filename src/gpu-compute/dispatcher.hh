@@ -95,6 +95,11 @@ class GpuDispatcher : public DmaDevice
         typedef std::unordered_map<uint64_t, uint64_t> TranslationBuffer;
         TranslationBuffer tlb;
 
+        // FIX_CHIA-HAO: evict all gpu pages when kernel done
+        EventFunctionWrapper* createEvictCheckEvent(int kern_id);
+        void checkEvictGpuDone(int kern_id);
+        /////
+        //
     public:
         /*statistics*/
         Stats::Scalar num_kernelLaunched;

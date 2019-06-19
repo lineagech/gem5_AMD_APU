@@ -724,7 +724,9 @@ machine(MachineType:Directory, "AMD Baseline protocol")
       if (tbe.wtData == true) {
           // do nothing
       } else if (tbe.Dirty == false) {
-        tbe.DataBlk := getDirectoryEntry(address).DataBlk;
+        // FIX_CHIA-HAO
+        getDirectoryEntry(address).DataBlk := in_msg.DataBlk;
+        tbe.DataBlk := getDirectoryEntry(address).DataBlk; 
       }
       tbe.MemData := true;
     }

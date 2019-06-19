@@ -127,6 +127,9 @@ GlobalMemPipeline::exec()
             }
         }
 
+        DPRINTF(GPUMem, "CU%d: WF[%d][%d] initiateAcc %s\n",
+                        computeUnit->cu_id, mp->simdId,
+                        mp->wfSlotId, mp->disassemble());
         mp->initiateAcc(mp);
 
         if (!outOfOrderDataDelivery && !mp->isMemFence()) {

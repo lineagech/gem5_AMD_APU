@@ -79,6 +79,7 @@ class ScGaDma : public DmaDevice
         void scgaDmaReadDone();
         void scgaDmaWriteDone();
         void writeThrDone();
+        //bool writeThrReqPending() { return writeThrPort.dmaPending(); }
 
         uint8_t *dmaReadCPUData;
         uint8_t *dmaWriteGPUData;
@@ -129,7 +130,10 @@ class ScGaDma : public DmaDevice
         void writeThrOp(Addr addr, int size,
                         uint8_t* data, CacheType cache_type);
 
-
+        EventFunctionWrapper* createWriteThrEvent(Addr addr,
+                                                  uint8_t* copy_data);
+        void processGpuWriteThrDone(Addr addr, uint8_t* copy_data);
+        bool writeThrReqPending() { return writeThrPort.dmaPending(); }
 
     protected:
 

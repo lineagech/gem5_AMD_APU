@@ -229,7 +229,10 @@ def create_system(options, full_system, system, piobus = None, dma_ports = [],
     # Create a backing copy of physical memory in case required
     if options.access_backing_store:
         ruby.access_backing_store = True
-        ruby.phys_mem = SimpleMemory(range=system.mem_ranges[0],
+        # FIX_CHIA-HAO
+        fixed_range = \
+            AddrRange(system.mem_ranges[0].start, system.mem_ranges[1].end)
+        ruby.phys_mem = SimpleMemory(range=fixed_range,#system.mem_ranges[0],
                                      in_addr_map=False)
 
 def create_directories(options, bootmem, ruby_system, system):

@@ -575,6 +575,8 @@ scga_dma.cpu = system.cpu[0]
 
 gpu_data_loader.cpu_side_mem_port = system.ruby.crossbars[0].slave
 gpu_data_loader.gpu_side_mem_port = system.ruby.crossbars[0].slave
+gpu_data_loader.cpuMemRange = system.mem_ranges[0];
+gpu_data_loader.gpuMemRange = system.mem_ranges[1];
 #gpu_data_loader.sys = system
 
 system.ruby.wrThrDma = scga_dma

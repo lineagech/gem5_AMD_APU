@@ -742,7 +742,7 @@ class ComputeUnit : public MemObject
     uint64_t getAndIncSeqNum() { return globalSeqNum++; }
 
     // FIX_CHIA-HAO
-    std::queue<EventFunctionWrapper*> memReqEvent;
+    std::queue< std::pair<Addr,EventFunctionWrapper*> > memReqEvent;
     EventFunctionWrapper pageLoadingEvent;
     void loadingCheck();
 

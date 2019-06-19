@@ -632,6 +632,7 @@ GPUCoalescer::hitCallback(GPUCoalescerRequest* srequest,
         assert(type == reqCoalescer[request_line_address][i].primaryType);
         request_address = pkt->getAddr();
         request_line_address = makeLineAddress(pkt->getAddr());
+
         if (pkt->getPtr<uint8_t>()) {
             if ((type == RubyRequestType_LD) ||
                 (type == RubyRequestType_ATOMIC) ||
@@ -642,6 +643,8 @@ GPUCoalescer::hitCallback(GPUCoalescerRequest* srequest,
                 (type == RubyRequestType_Load_Linked)) {
                 pkt->setData(
                     data.getData(getOffset(request_address), pkt->getSize()));
+
+
             } else {
                 data.setData(pkt->getPtr<uint8_t>(),
                              getOffset(request_address), pkt->getSize());
@@ -652,6 +655,30 @@ GPUCoalescer::hitCallback(GPUCoalescerRequest* srequest,
                     "%s\n",
                     RubyRequestType_to_string(type));
         }
+
+        // FIX_CHIA-HAO: when write hit from cache,
+        // write to main memory to be synchronized
+        DPRINTF(GPUCoalescer, "%s isWrite? %u, mach %u\n",
+                              __func__, pkt->isWrite(), mach);
+        DDUMP(GPUCoalescer, pkt->getPtr<uint8_t>(), pkt->getSize());
+        if ((pkt->isWrite()) && (mach == MachineType_TCP ||
+                                 mach == MachineType_TCC ||
+                                 mach == MachineType_TCCdir ||
+                                 mach == MachineType_Directory )) {
+            DPRINTF(GPUCoalescer, "%s write through to main memory %#x, "
+                                  "size %u, from %u\n",
+                                  __func__,
+                                  pkt->getAddr(),
+                                  pkt->getSize(),
+                                  mach);
+            m_ruby_system->wrThrDma->writeThrOp(
+                pkt->getAddr(),
+                pkt->getSize(),
+                pkt->getPtr<uint8_t>(),
+                static_cast<CacheType>(mach-MachineType_L0Cache)
+            );
+        }
+        ////////////////////////////////
 
         // If using the RubyTester, update the RubyTester sender state's
         // subBlock with the recieved data.  The tester will later access

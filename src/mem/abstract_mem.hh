@@ -192,6 +192,43 @@ class AbstractMemory : public MemObject
 
   public:
 
+    // FIX_CHIA-HAO: make static pointers to record data pointer
+    static uint8_t* ruby_phys_mem;
+    static uint8_t* mem_ctrls0;
+    static uint8_t* mem_ctrls1;
+    static AddrRange* ruby_phys_mem_range;
+    static AddrRange* mem_ctrls0_range;
+    static AddrRange* mem_ctrls1_range;
+    static uint8_t* getAbstractMem(std::string name) {
+        if (name == "system.ruby.phys_mem") {
+            return ruby_phys_mem;
+        }
+        else if (name == "system.mem_ctrls0") {
+            return mem_ctrls0;
+        }
+        else if (name == "system.mem_ctrls1") {
+            return mem_ctrls1;
+        }
+        else {
+            return NULL;
+        }
+    }
+    static AddrRange getAbstractMemRange(std::string name) {
+        if (name == "system.ruby.phys_mem") {
+            return *ruby_phys_mem_range;
+        }
+        else if (name == "system.mem_ctrls0") {
+            return *mem_ctrls0_range;
+        }
+        else if (name == "system.mem_ctrls1") {
+            return *mem_ctrls1_range;
+        }
+        else {
+            return AddrRange(0,0);
+        }
+    }
+
+
     typedef AbstractMemoryParams Params;
 
     AbstractMemory(const Params* p);

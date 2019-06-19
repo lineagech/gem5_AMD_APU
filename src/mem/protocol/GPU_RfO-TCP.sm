@@ -533,6 +533,8 @@ machine(MachineType:TCP, "GPU TCP (L1 Data Cache)")
   action(w_writeCache, "w", desc="write data to cache") {
     peek(responseToTCP_in, ResponseMsg) {
       assert(is_valid(cache_entry));
+      //FIX_CHIA-HAO
+      DPRINTF(RubySlicc, "%s\n", in_msg);
       cache_entry.DataBlk := in_msg.DataBlk;
       cache_entry.Dirty := in_msg.Dirty;
     }

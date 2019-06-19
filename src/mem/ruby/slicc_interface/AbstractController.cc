@@ -343,6 +343,8 @@ AbstractController::recvTimingResp(PacketPtr pkt)
         (*msg).m_MessageSize = MessageSizeType_Response_Data;
 
         // Copy data from the packet
+        DPRINTF(RubyQueue, "%s: addr %#x, size %u\n",
+                           __func__, pkt->getAddr(), pkt->getSize());
         (*msg).m_DataBlk.setData(pkt->getPtr<uint8_t>(), 0,
                                  RubySystem::getBlockSizeBytes());
     } else if (pkt->isWrite()) {

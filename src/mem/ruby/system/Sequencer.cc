@@ -496,10 +496,12 @@ Sequencer::hitCallback(SequencerRequest* srequest, DataBlock& data,
         }
     }
 
-    if (pkt->isWrite() && (mach == MachineType_L0Cache ||
+    // FIX_CHIA-HAO: just write to main memory if hit
+    if ((pkt->isWrite()) && (mach == MachineType_L0Cache ||
            mach == MachineType_L1Cache ||
            mach == MachineType_L2Cache ||
-           mach == MachineType_L3Cache ) ) {
+           mach == MachineType_L3Cache ||
+           mach == MachineType_Directory) ) {
 
         if (mach == MachineType_L0Cache )
             DPRINTF(RubySequencer, "RubySequencer hit call back: L0Cache\n");
@@ -510,6 +512,7 @@ Sequencer::hitCallback(SequencerRequest* srequest, DataBlock& data,
         if (mach == MachineType_L3Cache )
             DPRINTF(RubySequencer, "RubySequencer hit call back: L3Cache\n");
 
+        // FIX_CHIA-HAO
         DPRINTF(RubySequencer, "RubySequencer pkt addr %x, size %u\n",
                                pkt->getAddr(), pkt->getSize());
         m_ruby_system->wrThrDma->writeThrOp(pkt->getAddr(),
@@ -518,6 +521,7 @@ Sequencer::hitCallback(SequencerRequest* srequest, DataBlock& data,
             static_cast<CacheType>(mach-MachineType_L0Cache));
 
     }
+    //////////////////////
 
     // If using the RubyTester, update the RubyTester sender state's
     // subBlock with the recieved data.  The tester will later access
@@ -545,6 +549,8 @@ Sequencer::hitCallback(SequencerRequest* srequest, DataBlock& data,
         ruby_hit_callback(pkt);
         testDrainComplete();
     }
+
+
 }
 
 bool

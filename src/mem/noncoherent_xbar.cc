@@ -166,6 +166,9 @@ NoncoherentXBar::recvTimingReq(PacketPtr pkt, PortID slave_port_id)
 
     // remember where to route the response to
     if (expect_response) {
+        //FIX_CHIA-HAO
+        DPRINTF(NoncoherentXBar, "%s routeTo addr %#x\n",
+                                 __func__, pkt->getAddr());
         assert(routeTo.find(pkt->req) == routeTo.end());
         routeTo[pkt->req] = slave_port_id;
     }

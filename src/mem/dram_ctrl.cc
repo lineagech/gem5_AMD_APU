@@ -54,6 +54,7 @@
 #include "debug/DRAMState.hh"
 #include "debug/Drain.hh"
 #include "debug/QOS.hh"
+#include "gpu_data_loader/gpu_data_loader.hh"
 #include "sim/system.hh"
 
 using namespace std;
@@ -397,7 +398,7 @@ DRAMCtrl::decodeAddr(PacketPtr pkt, Addr dramPktAddr, unsigned size,
     assert(row < rowsPerBank);
     assert(row < Bank::NO_ROW);
 
-    DPRINTF(DRAM, "Address: %lld Rank %d Bank %d Row %d\n",
+    DPRINTF(DRAM, "Address: %#x Rank %d Bank %d Row %d\n",
             dramPktAddr, rank, bank, row);
 
     // create the corresponding DRAM packet with the entry time and
@@ -616,8 +617,13 @@ bool
 DRAMCtrl::recvTimingReq(PacketPtr pkt)
 {
     // This is where we enter from the outside world
-    DPRINTF(DRAM, "recvTimingReq: request %s addr %lld size %d\n",
+    // FIX_CHIA-HAO
+    DPRINTF(DRAM, "recvTimingReq: request %s addr %#x size %d\n",
             pkt->cmdString(), pkt->getAddr(), pkt->getSize());
+    DPRINTF(DRAM, "pkt data %c %c %c %c %c\n",
+            pkt->getPtr<uint8_t>()[0], pkt->getPtr<uint8_t>()[1],
+            pkt->getPtr<uint8_t>()[2], pkt->getPtr<uint8_t>()[3],
+            pkt->getPtr<uint8_t>()[4]);
 
     panic_if(pkt->cacheResponding(), "Should not see packets where cache "
              "is responding");
@@ -916,7 +922,9 @@ DRAMCtrl::chooseNextFRFCFS(DRAMPacketQueue& queue, Tick extra_col_delay)
 void
 DRAMCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency)
 {
-    DPRINTF(DRAM, "Responding to Address %lld.. ",pkt->getAddr());
+    DPRINTF(DRAM, "Responding to Address %#x\n",pkt->getAddr());
+    //uint8_t *debug_data = pkt->getPtr<uint8_t>();
+    //DDUMP(DRAM, pkt->getConstPtr<uint8_t>(), pkt->getSize());
 
     bool needsResponse = pkt->needsResponse();
     // do the actual memory access which also turns the packet into a
@@ -945,6 +953,40 @@ DRAMCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency)
         pendingDelete.reset(pkt);
     }
 
+    // FIX_CHIA-HAO: coherent between Ruby simple memory and dram ctrl
+    DDUMP(DRAM, pkt->getConstPtr<uint8_t>(), pkt->getSize());
+    if (pkt->isRead() /*|| pkt->isWrite()*/) {
+        GpuDataLoader *gpuDataLoader = GpuDataLoader::getInstance();
+        if (!gpuDataLoader->isSetAbstractMem) {
+            uint8_t *ruby_phys_mem
+                = AbstractMemory::getAbstractMem("system.ruby.phys_mem");
+            uint8_t *mem_ctrls0_mem
+                = AbstractMemory::getAbstractMem("system.mem_ctrls0");
+            uint8_t *mem_ctrls1_mem
+                = AbstractMemory::getAbstractMem("system.mem_ctrls1");
+            AddrRange ruby_phys_mem_range
+                = AbstractMemory::getAbstractMemRange("system.ruby.phys_mem");
+            AddrRange mem_ctrls0_mem_range
+                = AbstractMemory::getAbstractMemRange("system.mem_ctrls0");
+            AddrRange mem_ctrls1_mem_range
+                = AbstractMemory::getAbstractMemRange("system.mem_ctrls1");
+
+            gpuDataLoader->setAbstractMem("system.ruby.phys_mem",
+                                          ruby_phys_mem,
+                                          ruby_phys_mem_range);
+            gpuDataLoader->setAbstractMem("system.mem_ctrls0",
+                                          mem_ctrls0_mem,
+                                          mem_ctrls0_mem_range);
+            gpuDataLoader->setAbstractMem("system.mem_ctrls1",
+                                          mem_ctrls1_mem,
+                                          mem_ctrls1_mem_range);
+        }
+        DPRINTF(DRAM, "%s making coherent: \n", __func__);
+        AddrRange mem_ctrls1_mem_range
+                = AbstractMemory::getAbstractMemRange("system.mem_ctrls1");
+        if (mem_ctrls1_mem_range.contains(pkt->getAddr()))
+            gpuDataLoader->makeDataCoherent(pkt->getAddr(), pkt->getSize());
+    }
     DPRINTF(DRAM, "Done\n");
 
     return;
@@ -1102,7 +1144,7 @@ DRAMCtrl::prechargeBank(Rank& rank_ref, Bank& bank, Tick pre_at, bool trace)
 void
 DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
 {
-    DPRINTF(DRAM, "Timing access to addr %lld, rank/bank/row %d %d %d\n",
+    DPRINTF(DRAM, "Timing access to addr %#x, rank/bank/row %d %d %d\n",
             dram_pkt->addr, dram_pkt->rank, dram_pkt->bank, dram_pkt->row);
 
     // get the rank
@@ -1275,7 +1317,7 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     // Update bus state to reflect when previous command was issued
     nextBurstAt = cmd_at + tBURST;
 
-    DPRINTF(DRAM, "Access to %lld, ready at %lld next burst at %lld.\n",
+    DPRINTF(DRAM, "Access to %#x, ready at %lld next burst at %lld.\n",
             dram_pkt->addr, dram_pkt->readyTime, nextBurstAt);
 
     dram_pkt->rankRef.cmdList.push_back(Command(command, dram_pkt->bank,

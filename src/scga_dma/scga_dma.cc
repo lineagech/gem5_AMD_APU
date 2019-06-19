@@ -289,7 +289,8 @@ ScGaDma::getDataFromCPU(Addr addr, int size)
     return true;
 }
 
-bool ScGaDma::sendDataToGPU(Addr addr, int size)
+bool
+ScGaDma::sendDataToGPU(Addr addr, int size)
 {
     this->dmaWrite(addr, size,
                    &scgaDmaWriteEvent,
@@ -297,11 +298,29 @@ bool ScGaDma::sendDataToGPU(Addr addr, int size)
     return true;
 }
 
-void ScGaDma::writeThrOp(Addr addr, int size,
-                         uint8_t *data, CacheType cache_type)
+void
+ScGaDma::writeThrOp(Addr addr, int size,
+                    uint8_t *data, CacheType cache_type)
 {
+    uint8_t* copy_data = new uint8_t[size];
+    memcpy(copy_data, data, size);
+    EventFunctionWrapper *event = createWriteThrEvent(addr, copy_data);
     writeThrPort.dmaAction(MemCmd::WriteReq, addr, size,
-                           &writeThrEvent, data, 0/*delay*/);
+                           event/*&writeThrEvent*/, copy_data, 0/*delay*/);
 }
 
+EventFunctionWrapper*
+ScGaDma::createWriteThrEvent(Addr addr, uint8_t* copy_data)
+{
+    return new EventFunctionWrapper(
+        [this, addr, copy_data]{ processGpuWriteThrDone(addr, copy_data); },
+        "Write Through Done Event", true
+    );
+}
 
+void
+ScGaDma::processGpuWriteThrDone(Addr addr, uint8_t* copy_data)
+{
+    DPRINTF(ScGaDMA, "%s for %#x\n", __func__, addr);
+    delete copy_data;
+}

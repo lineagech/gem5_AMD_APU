@@ -376,6 +376,13 @@ System::allocPhysPages(int npages)
 
     Addr next_return_addr = pagePtr << PageShift;
 
+    // FIX_CHIA-HAO
+    //DPRINTF(Loader, "System::allocPhysPages %d pages\n", npages);
+    AddrRange gpuRange(0x100000000, 0x1ffffffff);
+    if (gpuRange.contains(next_return_addr)) {
+        fatal("Occupied by GPU memory\n");
+    }
+
     AddrRange m5opRange(0xffff0000, 0xffffffff);
     if (m5opRange.contains(next_return_addr)) {
         warn("Reached m5ops MMIO region\n");

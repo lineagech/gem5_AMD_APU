@@ -51,10 +51,19 @@
 #include "cpu/thread_context.hh"
 #include "debug/LLSC.hh"
 #include "debug/MemoryAccess.hh"
+#include "gpu_data_loader/gpu_data_loader.hh"
 #include "mem/packet_access.hh"
 #include "sim/system.hh"
 
 using namespace std;
+
+uint8_t* AbstractMemory::ruby_phys_mem = NULL;
+uint8_t* AbstractMemory::mem_ctrls0 = NULL;
+uint8_t* AbstractMemory::mem_ctrls1 = NULL;
+AddrRange* AbstractMemory::ruby_phys_mem_range = NULL;
+AddrRange* AbstractMemory::mem_ctrls0_range = NULL;
+AddrRange* AbstractMemory::mem_ctrls1_range = NULL;
+
 
 AbstractMemory::AbstractMemory(const Params *p) :
     MemObject(p), range(params()->range), pmemAddr(NULL),
@@ -75,6 +84,24 @@ AbstractMemory::init()
 void
 AbstractMemory::setBackingStore(uint8_t* pmem_addr)
 {
+    // FIX_CHIA-HAO: make coherence for memory controller and Ruby
+    DPRINTF(MemoryAccess, "%s for %s\n", __func__, name());
+    if (name() == "system.ruby.phys_mem") {
+        ruby_phys_mem = pmem_addr;
+        ruby_phys_mem_range = new AddrRange(range.start(),
+                                            range.end());
+    }
+    else if (name() == "system.mem_ctrls0") {
+        mem_ctrls0 = pmem_addr;
+        mem_ctrls0_range = new AddrRange(range.start(),
+                                         range.end());
+    }
+    else if (name() == "system.mem_ctrls1") {
+        mem_ctrls1 = pmem_addr;
+        mem_ctrls1_range = new AddrRange(range.start(),
+                                         range.end());
+    }
+
     pmemAddr = pmem_addr;
 }
 
@@ -328,6 +355,13 @@ AbstractMemory::access(PacketPtr pkt)
                 pkt->getAddr());
       return;
     }
+    //FIX_CHIA-HAO: comment the assert
+    DPRINTF(MemoryAccess, "pkt addr %#x and size %u : "
+                          "range start %#x, end %#x\n",
+                          pkt->getAddr(), pkt->getSize(),
+                          range.start(), range.end());
+    DDUMP(MemoryAccess, pkt->getPtr<uint8_t>(), pkt->getSize());
+    ////////////////////////////////////
 
     assert(AddrRange(pkt->getAddr(),
                      pkt->getAddr() + (pkt->getSize() - 1)).isSubset(range));
@@ -435,6 +469,7 @@ AbstractMemory::functionalAccess(PacketPtr pkt)
         if (pmemAddr) {
             pkt->writeData(hostAddr);
         }
+        DPRINTF(MemoryAccess, "%s %s\n", name(), __func__);
         TRACE_PACKET("Write");
         pkt->makeResponse();
     } else if (pkt->isPrint()) {

@@ -307,7 +307,8 @@ namespace HsailISA
 
             for (int lane = 0; lane < w->computeUnit->wfSize(); ++lane) {
                 if (mask[lane]) {
-                    assert(m->addr[lane] + sizeof(MemCType) <= w->roSize);
+                    // FIX_CHIA-HAO: comment below
+                    //assert(m->addr[lane] + sizeof(MemCType) <= w->roSize);
                     m->addr[lane] += w->roBase;
                 }
             }

@@ -369,8 +369,20 @@ TLB::translate(const RequestPtr &req,
                         }
                     }
                     if (!pte) {
-                        return std::make_shared<PageFault>(vaddr, true, mode,
-                                                           true, false);
+                        // FIX_CHIA-HAO
+                        p->allocateMem(roundDown(vaddr, PageBytes), PageBytes);
+                        pte = p->pTable->lookup(vaddr);
+                        Addr alignedVaddr = p->pTable->pageAlign(vaddr);
+                        DPRINTF(TLB, "Mapping %#x to %#x\n", alignedVaddr,
+                                pte->paddr);
+                        entry = insert(alignedVaddr, TlbEntry(
+                                p->pTable->pid(), alignedVaddr, pte->paddr,
+                                pte->flags & EmulationPageTable::Uncacheable,
+                                pte->flags & EmulationPageTable::ReadOnly));
+                        //////////////////////////////////////////////////
+
+                        //return std::make_shared<PageFault>(vaddr, true, mode,
+                        //                                   true, false);
                     } else {
                         Addr alignedVaddr = p->pTable->pageAlign(vaddr);
                         DPRINTF(TLB, "Mapping %#x to %#x\n", alignedVaddr,

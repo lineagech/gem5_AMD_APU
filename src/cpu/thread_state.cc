@@ -121,7 +121,10 @@ ThreadState::initMemProxies(ThreadContext *tc)
         assert(proxy == NULL);
         proxy = new SETranslatingPortProxy(baseCpu->getDataPort(),
                                            process,
-                                           SETranslatingPortProxy::NextPage);
+                                           //SETranslatingPortProxy::NextPage
+                                           // FIX_CHIA-HAO
+                                           SETranslatingPortProxy::Always
+                                          );
     }
 }
 

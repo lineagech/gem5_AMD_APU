@@ -1354,6 +1354,15 @@ namespace X86ISA
                                  false);
             } else {
                 sender_state->tlbEntry = nullptr;
+
+                // FIX_CHIA-HAO
+                p->allocateMem(roundDown(vaddr, PageBytes), PageBytes);
+                pte = p->pTable->lookup(vaddr);
+                alignedVaddr = p->pTable->pageAlign(vaddr);
+                sender_state->tlbEntry =
+                    new TlbEntry(p->pid(), virtPageAddr, pte->paddr, false,
+                                 false);
+                ///////////////////////////////
             }
 
             handleTranslationReturn(virtPageAddr, TLB_MISS, pkt);

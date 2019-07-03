@@ -39,6 +39,10 @@ GpuDataLoader::GpuDataLoader(GpuDataLoaderParams *params):
 
     evictingAll = false;
     evictAllDone = false;
+
+    gpuMemCapacity = 0x100000000;
+    baseAddr = 0x100000000;
+    secondChanceInd = 0;
 }
 
 GpuDataLoader*
@@ -111,6 +115,7 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
         delete pkt;
         delete senderState;
     }
+    // TO GPU
     else if (port == this->name()+"gpu_side_mem_port"
              && senderState->trans == TO_GPU) {
         Addr gpuPageAddr = pkt->getAddr() & (~(pageSize-1));
@@ -131,6 +136,14 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
 
             /* set the page as shared */
             pageStatusMap[gpuPageAddr] = Shared;
+
+            #if FINITE_GPU_MEM_CAPACITY
+            /* clear loading after evict status */
+            if (toLoadPageAfterEvict.find(gpuPageAddr)
+                    != toLoadPageAfterEvict.end()) {
+                toLoadPageAfterEvict.erase(gpuPageAddr);
+            }
+            #endif
         }
         //auto senderState = pkt->popSenderState();
         delete pkt;
@@ -191,6 +204,15 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
             stateMap[gpuPageAddr] = Done;
             stateMap[cpuPageAddr] = Invalid;
             gathered_data_pos[gpuPageAddr] = 0;
+
+            #if FINITE_GPU_MEM_CAPACITY
+            if (toLoadPageAfterEvict.find(gpuPageAddr)
+                    != toLoadPageAfterEvict.end()) {
+                Addr nextLoadPageAddr = toLoadPageAfterEvict[gpuPageAddr];
+                loadPageFromCPU(nextLoadPageAddr);
+                //toLoadPageAfterEvict.erase(gpuPageAddr);
+            }
+            #endif
         }
 
         // make mem_ctrls0 and ruby phys mem synchronized
@@ -251,12 +273,20 @@ GpuDataLoader::loadPageFromCPU(Addr cpuPageAddr)
     cpuPageAddr &= ~( (0x1 << pageSizeBits)-1 );
 
     // if already exists, just return directly
-    if (gpuAddrMap.find(cpuPageAddr) != gpuAddrMap.end()) {
+    // TODO: will remove the first condition
+    if (gpuAddrMap.find(cpuPageAddr) != gpuAddrMap.end()
+    #if FINITE_GPU_MEM_CAPACITY
+     && toLoadPageAfterEvict.find(gpuAddrMap[cpuPageAddr])
+            == toLoadPageAfterEvict.end()
+    #endif
+    ) {
         return;
     }
 
     // just or with gpuAddrMask to get valid gpu address
     // temporarily set
+    // TODO: get correct gpuPageAddr:
+    // gpuPageAddr = gpuAddrMap[cpuPageAddr]
     Addr gpuPageAddr = cpuPageAddr | gpuAddrMask;
 
     // make a correspondance for cpu and gpu address
@@ -301,6 +331,8 @@ GpuDataLoader::loadPageFromCPU(Addr cpuPageAddr)
 
     }
     recvRespNum[FROM_CPU][cpuPageAddr] = 0;
+
+    numUniqPagesLoaded++;
 }
 
 void
@@ -402,6 +434,8 @@ GpuDataLoader::loadPageFromGPU(Addr gpuPageAddr)
 
     }
     recvRespNum[FROM_GPU][gpuPageAddr] = 0;
+
+    numGPUAccesses++;
 }
 
 void
@@ -447,6 +481,7 @@ GpuDataLoader::savePageToCPU(Addr cpuPageAddr, Addr gpuPageAddr, uint8_t *data)
     }
     recvRespNum[TO_CPU][cpuPageAddr] = 0;
 
+    numCPUAccesses++;
 }
 
 void
@@ -478,6 +513,16 @@ GpuDataLoader::evictPage(Addr gpuPageAddr)
      * move back to cpu */
     DPRINTF(GPUDataLoader, "%s for addr %#x\n", gpuPageAddr);
     loadPageFromGPU(gpuPageAddr);
+    numEvictedPages++;
+}
+
+void
+GpuDataLoader::evictPage(Addr gpuPageAddr, Addr nextLoadedPageAddr)
+{
+    DPRINTF(GPUDataLoader, "%s for addr %#x\n", gpuPageAddr);
+    toLoadPageAfterEvict[gpuPageAddr] = nextLoadedPageAddr;
+    loadPageFromGPU(gpuPageAddr);
+    numEvictedPages++;
 }
 
 void
@@ -645,3 +690,92 @@ GpuDataLoader::CoreSidePort::recvRangeChange()
     // do nothing
     return;
 }
+
+
+void
+GpuDataLoader::regStats()
+{
+    //using namespace Stats;
+    MemObject::regStats();
+
+    numGPUAccesses
+        .name(name() + ".numGPUAccesses")
+        .desc("Number of GPU access to memory");
+    numCPUAccesses
+        .name(name() + ".numCPUAccesses")
+        .desc("Number of CPU access to memory");
+    numPageMisses
+        .name(name() + ".numPageMisses")
+        .desc("Number of missing on GPU access to memory");
+    numPageHits
+        .name(name() + ".numPageHits")
+        .desc("Number of hits on GPU access to memory");
+    numEvictedPages
+        .name(name() + ".numEvictedPages")
+        .desc("Number of evited pages from GPU to CPU");
+    numUniqPagesLoaded
+        .name(name() + ".numUniqPagesLoaded")
+        .desc("Number of unique pages loaded from CPU");
+}
+
+
+void
+GpuDataLoader::handleMissingPage(Addr cpuPageAddr)
+{
+    bool isFull = true;
+    Addr targetGPUPageAddr;
+    if (gpuAddrMap.find(cpuPageAddr) != gpuAddrMap.end()) {
+        return;
+    }
+    for (int i = 0; i < secondChanceStatus.size(); i++) {
+        if (secondChanceStatus[i] == SC_INVALID) {
+            targetGPUPageAddr = baseAddr + pageSize*i;
+            /* set corresponding GPU page addr */
+            gpuAddrMap[cpuPageAddr] = targetGPUPageAddr;
+            cpuAddrMap[targetGPUPageAddr] = cpuPageAddr;
+            stateMap[cpuPageAddr] = Loading;
+            /* set the second chance status */
+            secondChanceVec[i] = cpuPageAddr;
+            secondChanceStatus[i] = SC_TRUE;
+            isFull = false;
+            break;
+        }
+    }
+    while (isFull) {
+        if (secondChanceInd == secondChanceVec.size()) {
+            secondChanceInd = 0;
+        }
+        auto currInd = secondChanceInd;
+        secondChanceInd++;
+        if (secondChanceStatus[currInd] == SC_TRUE) {
+            secondChanceStatus[currInd] = SC_FALSE;
+        }
+        else if (secondChanceStatus[currInd] == SC_FALSE) {
+            targetGPUPageAddr = secondChanceVec[currInd];
+            /* should evict the page */
+            Addr evictedPageAddr = getGpuPageAddr(targetGPUPageAddr);
+            evictPage(evictedPageAddr, cpuPageAddr);
+
+            /* set corresponding GPU page addr */
+            gpuAddrMap[cpuPageAddr] = targetGPUPageAddr;
+            cpuAddrMap[targetGPUPageAddr] = cpuPageAddr;
+            stateMap[cpuPageAddr] = Loading;
+
+            /* set second chance status to represent the current page
+             * will be replaced with the new loaded page */
+            secondChanceVec[currInd] = cpuPageAddr;
+            secondChanceStatus[currInd] = SC_TRUE;
+
+            /* return directly,  after evicting target page,
+             * next it will call loadPageFromCPU to load the page
+             * */
+            return;
+        }
+    }
+
+    loadPageFromCPU(cpuPageAddr);
+}
+
+
+
+

@@ -1274,6 +1274,22 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
     DPRINTF(GPUPort, "Req %u\n", requestCmd==MemCmd::WriteReq);
     DDUMP(GPUPort, new_pkt->getPtr<uint8_t>(), new_pkt->getSize());
     if (requestCmd == MemCmd::ReadReq || requestCmd == MemCmd::WriteReq) {
+        GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+        gpuDataLoader->numGPUAccesses++;
+
+        GpuDataLoader::GpuDataLoaderState state =
+            gpuDataLoader->getState(line);
+        bool isPageProcessed =
+            gpuDataLoader->isPageLoaded(line);
+        if (!isPageProcessed ||
+            (isPageProcessed && state == GpuDataLoader::Loading)) {
+            gpuDataLoader->numPageMisses++;
+            gpuDataLoader->numCPUAccesses++;
+        }
+        else {
+            gpuDataLoader->numPageHits++;
+        }
+
         computeUnit->memReqEvent.push({line,mem_req_event});
         if (!computeUnit->pageLoadingEvent.scheduled())
             computeUnit->schedule(computeUnit->pageLoadingEvent,

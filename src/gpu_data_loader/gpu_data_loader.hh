@@ -16,6 +16,8 @@
 #define memReqUnit (64)
 #define memReqNum ((pageSize+(memReqUnit-1))/memReqUnit)
 
+#define FINITE_GPU_MEM_CAPACITY (1)
+
 class GpuDataLoader : public MemObject
 {
 public:
@@ -161,6 +163,10 @@ private:
     EventFunctionWrapper checkEvictEvent;
     void checkEvictDone();
     void evictPage(Addr gpuPageAddr);
+    void evictPage(Addr gpuPageAddr, Addr nextLoadedPageAddr);
+    /* <gpuPageAddr, cpuPageAddr> record which cpu page
+     * should be loaded after evicting the gpu page */
+    std::unordered_map<Addr,Addr> toLoadPageAfterEvict;
 
     bool loadingDone;
 
@@ -180,10 +186,36 @@ private:
         LoaderTrans trans;
     };
 
-//protected:
+    void regStats() override;
+
+    /* Mechanism of Evicting Pages when full */
+    typedef enum {
+        SC_TRUE,
+        SC_FALSE,
+        SC_INVALID
+    } SC_Status;
+    //typedef Addr Capacity;
+    uint64_t gpuMemCapacity;
+    Addr baseAddr;
+    /* <CPU Page Addr> */
+    std::vector<Addr> secondChanceVec;
+    std::vector<SC_Status> secondChanceStatus;
+    uint32_t secondChanceInd;
+    void handleMissingPage(Addr cpuPageAddr);
+
+protected:
 
     AddrRange cpuMemRange;
     AddrRange gpuMemRange;
+
+public:
+    // Statistics
+    Stats::Scalar numGPUAccesses;
+    Stats::Scalar numCPUAccesses;
+    Stats::Scalar numPageMisses;
+    Stats::Scalar numPageHits;
+    Stats::Scalar numEvictedPages;
+    Stats::Scalar numUniqPagesLoaded;
 };
 
 #endif

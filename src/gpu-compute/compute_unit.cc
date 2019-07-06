@@ -684,10 +684,18 @@ ComputeUnit::DataPort::recvTimingResp(PacketPtr pkt)
     // FIX_CHIA-HAO: restore back to original address
     //if (pkt->cmd == MemCmd::ReadReq) {
     GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+    gpuDataLoader->num_gpu_mem_access++;
+    gpuDataLoader->avgMemAccessLatency =
+        ( (gpuDataLoader->avgMemAccessLatency).value() *
+          ((gpuDataLoader->num_gpu_mem_access)-1) +
+          curTick()-gpuDataLoader->gpuMemAccTick[pkt])
+        / (gpuDataLoader->num_gpu_mem_access);
     pkt->req->setPaddr(gpuDataLoader->getCpuPageAddr(pkt->req->getPaddr()));
     if (pkt->isWrite()) {
         gpuDataLoader->setPageStatus(pkt->getAddr(), GpuDataLoader::Dirty);
     }
+    DPRINTF(GPUDataLoader, "gpu mem access latency: %u\n",
+        curTick()-gpuDataLoader->gpuMemAccTick[pkt]);
     //}
 
     EventFunctionWrapper *mem_resp_event =
@@ -1276,6 +1284,7 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
     if (requestCmd == MemCmd::ReadReq || requestCmd == MemCmd::WriteReq) {
         GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
         gpuDataLoader->numGPUAccesses++;
+        gpuDataLoader->gpuMemAccTick[new_pkt] = curTick();
 
         GpuDataLoader::GpuDataLoaderState state =
             gpuDataLoader->getState(line);

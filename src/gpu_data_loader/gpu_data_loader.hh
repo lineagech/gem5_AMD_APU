@@ -216,6 +216,16 @@ public:
     Stats::Scalar numPageHits;
     Stats::Scalar numEvictedPages;
     Stats::Scalar numUniqPagesLoaded;
+
+    Stats::Scalar sumPageLoadLatency;
+    Stats::Scalar avgPageLoadLatency;
+    Stats::Scalar sumPageEvictLatency;
+    Stats::Scalar avgPageEvictLatency;
+    std::unordered_map<Addr,Tick> tickRecord;
+
+    Stats::Scalar avgMemAccessLatency;
+    std::unordered_map<PacketPtr,Tick> gpuMemAccTick;
+    uint64_t num_gpu_mem_access;
 };
 
 #endif

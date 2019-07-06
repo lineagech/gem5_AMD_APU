@@ -43,6 +43,9 @@ GpuDataLoader::GpuDataLoader(GpuDataLoaderParams *params):
     gpuMemCapacity = 0x100000000;
     baseAddr = 0x100000000;
     secondChanceInd = 0;
+
+    num_gpu_mem_access = 0;
+    avgMemAccessLatency = 0;
 }
 
 GpuDataLoader*
@@ -144,7 +147,16 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
                 toLoadPageAfterEvict.erase(gpuPageAddr);
             }
             #endif
+            sumPageLoadLatency += curTick()-tickRecord[cpuPageAddr];
+            avgPageLoadLatency = sumPageLoadLatency.value()
+                                    / numUniqPagesLoaded.value();
+            DPRINTF(GPUDataLoader, "page load latency %u\n",
+                                   curTick() - tickRecord[cpuPageAddr]);
         }
+
+        // update Stats
+        assert(tickRecord.find(cpuPageAddr) != tickRecord.end());
+
         //auto senderState = pkt->popSenderState();
         delete pkt;
         delete senderState;
@@ -213,6 +225,12 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
                 //toLoadPageAfterEvict.erase(gpuPageAddr);
             }
             #endif
+
+            sumPageEvictLatency += curTick()-tickRecord[gpuPageAddr];
+            avgPageEvictLatency = sumPageEvictLatency.value()
+                                    / numEvictedPages.value();
+            DPRINTF(GPUDataLoader, "page evict latency %u\n",
+                                   curTick() - tickRecord[gpuPageAddr]);
         }
 
         // make mem_ctrls0 and ruby phys mem synchronized
@@ -333,6 +351,7 @@ GpuDataLoader::loadPageFromCPU(Addr cpuPageAddr)
     recvRespNum[FROM_CPU][cpuPageAddr] = 0;
 
     numUniqPagesLoaded++;
+    tickRecord[cpuPageAddr] = curTick();
 }
 
 void
@@ -436,6 +455,7 @@ GpuDataLoader::loadPageFromGPU(Addr gpuPageAddr)
     recvRespNum[FROM_GPU][gpuPageAddr] = 0;
 
     numGPUAccesses++;
+    tickRecord[gpuPageAddr] = curTick();
 }
 
 void
@@ -487,21 +507,45 @@ GpuDataLoader::savePageToCPU(Addr cpuPageAddr, Addr gpuPageAddr, uint8_t *data)
 void
 GpuDataLoader::checkEvictDone()
 {
+    bool allDirtyPagesEvicted = true;
+    std::vector<Addr> eraseAddrVec;
     DPRINTF(GPUDataLoader, "%s\n", __func__);
     /* gpuAddrMap: <cpuAddr, gpuAddr> */
-    for (auto addrPair : gpuAddrMap) {
-        if (stateMap[addrPair.second] == Done &&
-            stateMap[addrPair.first] == Invalid) {
-            gpuAddrMap.erase(addrPair.first);
-            cpuAddrMap.erase(addrPair.second);
-            stateMap.erase(addrPair.first);
-            stateMap.erase(addrPair.second);
-        } else {
-            if (!checkEvictEvent.scheduled())
-                schedule(&checkEvictEvent, curTick()+clockPeriod());
-            return;
+    for (auto addrPair=gpuAddrMap.begin();
+         addrPair!=gpuAddrMap.end(); addrPair++) {
+        Addr gpuAddr = addrPair->second;
+        if (stateMap[addrPair->second] == Done &&
+            stateMap[addrPair->first] == Invalid) {
+            //gpuAddrMap.erase(addrPair->first);
+            eraseAddrVec.push_back(addrPair->first);
+            cpuAddrMap.erase(addrPair->second);
+            stateMap.erase(addrPair->first);
+            stateMap.erase(addrPair->second);
+
+            pageStatusMap.erase(addrPair->second);
         }
+        /* check gpu memory status is dirty or not */
+        else if ( pageStatusMap.find(gpuAddr) != pageStatusMap.end()
+            && pageStatusMap[gpuAddr] == Dirty) {
+            allDirtyPagesEvicted = false;
+        }
+        //else {
+        //    if (!checkEvictEvent.scheduled())
+        //        schedule(&checkEvictEvent, curTick()+clockPeriod());
+        //    return;
+        //}
     }
+
+    for (auto _addr : eraseAddrVec) {
+        gpuAddrMap.erase(_addr);
+    }
+
+    if (!allDirtyPagesEvicted) {
+        if (!checkEvictEvent.scheduled())
+            schedule(&checkEvictEvent, curTick()+clockPeriod());
+        return;
+    }
+
     evictingAll = false;
     evictAllDone = true;
 }
@@ -716,6 +760,29 @@ GpuDataLoader::regStats()
     numUniqPagesLoaded
         .name(name() + ".numUniqPagesLoaded")
         .desc("Number of unique pages loaded from CPU");
+
+    sumPageLoadLatency
+        .name(name() + ".sumPageLoadLatency")
+        .desc("Sum of latency loading pages");
+    avgPageLoadLatency
+        .name(name() + ".avgPageLoadLatency")
+        .desc("Aveage latency of loading a page")
+        .precision(2);
+    sumPageEvictLatency
+        .name(name() + ".sumPageEvictLatency")
+        .desc("Sum of latency evicting pages");
+    avgPageEvictLatency
+        .name(name() + ".avgPageEvictLatency")
+        .desc("Average latency of evict a page")
+        .precision(2);
+
+    //avgPageLoadLatency = sumPageLoadLatency / numEvictedPages;
+    //avgPageEvictLatency = sumPageEvictLatency / numPageMisses;
+
+    avgMemAccessLatency
+        .name(name() + ".avgMemAccessLatency")
+        .desc("Average latency of gpu memory access")
+        .precision(2);
 }
 
 

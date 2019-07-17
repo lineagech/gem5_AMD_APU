@@ -1,6 +1,8 @@
 #ifndef __SCGA_DMA__
 #define __SCGA_DMA__
 
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 //For translation
@@ -13,6 +15,7 @@
 #include "mem/packet.hh"
 #include "mem/port.hh"
 #include "params/ScGaDma.hh"
+#include "scga_dma/regs.hh"
 
 #define SCGA_DMA_VIRTUAL_START           (0x20000000)
 #define SCGA_DMA_PHYSICAL_START          (0x300000000)
@@ -23,6 +26,15 @@
 #define SCGA_DMA_OFFSET_ACT              (64)
 #define SCGA_DMA_OFFSET_ADDR_TRANS       (0xFF)
 
+typedef enum {
+    Idle,
+    Loading,
+    Storing,
+    Completion,
+    UnRemap_Load,
+    UnRemap_Store,
+    UnRemap_Complt
+} DmaState;
 
 typedef enum {
     L0_Cache = 0,
@@ -73,16 +85,82 @@ class ScGaDma : public DmaDevice
         uint64_t cpu_start_addr;
         uint64_t cpu_transfer_size;
 
-        EventFunctionWrapper scgaDmaReadEvent;
-        EventFunctionWrapper scgaDmaWriteEvent;
+        //EventFunctionWrapper scgaDmaReadEvent;
+        //EventFunctionWrapper scgaDmaWriteEvent;
         EventFunctionWrapper writeThrEvent;
-        void scgaDmaReadDone();
-        void scgaDmaWriteDone();
+        EventFunctionWrapper* createGatherEvent(Addr _paddr);
+        EventFunctionWrapper* createCompltEvent(Addr _paddr);
+        void scgaDmaReadDone(Addr _addr);
+        void scgaDmaWriteDone(Addr _addr);
         void writeThrDone();
         //bool writeThrReqPending() { return writeThrPort.dmaPending(); }
 
+        uint32_t blockCnt;
         uint8_t *dmaReadCPUData;
         uint8_t *dmaWriteGPUData;
+
+        /* temp solution for getting dram content */
+        uint8_t *dram_mem;
+        uint8_t* getMemContent(Addr _addr, uint32_t _size, void* _dst);
+        AddrRange dram_mem_range;
+
+        /* DMA state */
+        DmaState dmaState;
+
+        /* Record which cache blocks constituing remapped pages */
+        class RemapPage {
+        public:
+            RemapPage() {}
+            RemapPage(Addr _addr,
+                      std::vector< std::pair<Addr,uint32_t> >& _blks):
+            remappedPageAddr(_addr), constitutedBlocks(_blks)
+            {
+
+            }
+            RemapPage(const RemapPage& _rp)
+            {
+                this->remappedPageAddr = _rp.remappedPageAddr;
+                this->constitutedBlocks = _rp.constitutedBlocks;
+            }
+            RemapPage& operator=(const RemapPage& _rp)
+            {
+                this->remappedPageAddr = _rp.remappedPageAddr;
+                this->constitutedBlocks = _rp.constitutedBlocks;
+                return *this;
+            }
+
+            /* Physical address of remapped page address */
+            Addr remappedPageAddr;
+            /* Which blocks constitute of remapped page
+             * <physical address of the block, corresponding size>
+             * */
+            std::vector< std::pair<Addr,uint32_t> > constitutedBlocks;
+        };
+
+        /* <physical address of remapped page,
+         *  corresponding RemaPage instance> */
+        std::unordered_map<Addr,RemapPage>::iterator rpIter;
+        std::unordered_map<Addr,RemapPage> remapPages;
+        std::vector< std::pair<Addr,uint32_t> > currLoadingBlocks;
+        std::unordered_set<Addr> currLoadingBlocksSet;
+
+        /* Check loading status */
+        bool gatherDone;
+        bool storeDone;
+
+        /* Un-Remap, storing remapped pages to original blocks */
+        bool isUnRemapStart;
+        bool isBlocksBackStart;
+        bool isUnRemapLoadDone;
+        bool isUnRemapStoreDone;
+        std::unordered_set<Addr> unRemapLoadPagesSet;
+        std::unordered_set<Addr> unRemapStoreBlocksSet;
+        std::unordered_map<Addr,uint8_t*> loadedPagesDataMap;
+        EventFunctionWrapper* createUnRemapLoadEvent(Addr _paddr);
+        EventFunctionWrapper* createUnRemapStoreEvent(Addr _paddr);
+        void unRemapLoadDone(Addr _addr); // _addr is the page address
+        void unRemapStoreDone(Addr _addr); // _addr is the block address
+        void unRemapClear();
 
     public:
         typedef ScGaDmaParams Params;
@@ -118,8 +196,8 @@ class ScGaDma : public DmaDevice
         Addr getPhyAddr(Addr vaddr, SimpleThread* thread);
         void AddrTransTest(Addr addr, Request::Flags flags, MasterID mid);
 
-        bool getDataFromCPU(Addr addr, int size);
-        bool sendDataToGPU(Addr addr, int size);
+        bool getData(Addr addr, int size, uint8_t* loaded_data);
+        bool sendData(Addr addr, int size, uint8_t* _data);
 
         /* When there are cache hits, current protocol would not
          * write through to main memory,
@@ -134,6 +212,10 @@ class ScGaDma : public DmaDevice
                                                   uint8_t* copy_data);
         void processGpuWriteThrDone(Addr addr, uint8_t* copy_data);
         bool writeThrReqPending() { return writeThrPort.dmaPending(); }
+
+        void setDramMem(uint8_t* _mem) { dram_mem = _mem; }
+        void setDramMemRange(AddrRange _addr_range)
+        { dram_mem_range = _addr_range; }
 
     protected:
 

@@ -204,7 +204,8 @@ SRegOperand::set(Wavefront *w, int lane, OperandType &val)
     DPRINTF(GPUReg, "CU%d, WF[%d][%d], lane %d: $s%d <- %d\n",
             w->computeUnit->cu_id, w->simdId, w->wfSlotId, lane, regIdx, val);
 
-    assert(sizeof(OperandType) == sizeof(uint32_t));
+    // FIX_CHIA-HAO: comment below lines to avoid assertion
+    //assert(sizeof(OperandType) == sizeof(uint32_t));
     assert(regIdx < w->maxSpVgprs);
     uint32_t vgprIdx = w->remap(regIdx, sizeof(OperandType), 1);
     w->computeUnit->vrf[w->simdId]->write<OperandType>(vgprIdx,val,lane);

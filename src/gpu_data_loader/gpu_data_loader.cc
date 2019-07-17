@@ -5,6 +5,9 @@
 #include "mem/abstract_mem.hh"
 #include "sim/system.hh"
 
+#define pageSizeBits (12)
+#define pageSize (1<<pageSizeBits)
+
 #define DUMPDATA(Flag, Data) \
 do \
 { \

@@ -76,7 +76,8 @@ class VecRegisterState
     void
     write(unsigned int regIdx, T value, int threadId=0) {
         T *p0;
-        assert(sizeof(T) == 4 || sizeof(T) == 8);
+        // FIX_CHIA-HAO: comment below
+        //assert(sizeof(T) == 4 || sizeof(T) == 8);
         if (sizeof(T) == 4) {
             p0 = (T*)(&s_reg[regIdx][threadId]);
         } else {

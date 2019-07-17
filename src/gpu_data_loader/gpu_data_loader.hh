@@ -11,8 +11,8 @@
 #include "mem/port.hh"
 #include "params/GpuDataLoader.hh"
 
-#define pageSizeBits (12)
-#define pageSize (1<<pageSizeBits)
+//#define pageSizeBits (12)
+//#define pageSize (1<<pageSizeBits)
 #define memReqUnit (64)
 #define memReqNum ((pageSize+(memReqUnit-1))/memReqUnit)
 

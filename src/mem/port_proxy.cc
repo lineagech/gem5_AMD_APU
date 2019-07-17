@@ -42,6 +42,7 @@
 #include "base/chunk_generator.hh"
 #include "gpu_data_loader/gpu_data_loader.hh"
 #include "mem/abstract_mem.hh"
+#include "scga_dma/scga_dma.hh"
 
 void
 PortProxy::readBlobPhys(Addr addr, Request::Flags flags,
@@ -76,6 +77,7 @@ PortProxy::writeBlobPhys(Addr addr, Request::Flags flags,
 
         // FIX_CHIA-HAO
         GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+        ScGaDma* scgaDma = ScGaDma::getInstance();
         if (!gpuDataLoader->isSetAbstractMem) {
             uint8_t *ruby_phys_mem
                 = AbstractMemory::getAbstractMem("system.ruby.phys_mem");
@@ -99,6 +101,8 @@ PortProxy::writeBlobPhys(Addr addr, Request::Flags flags,
             gpuDataLoader->setAbstractMem("system.mem_ctrls1",
                                           mem_ctrls1_mem,
                                           mem_ctrls1_mem_range);
+            scgaDma->setDramMem(ruby_phys_mem);
+            scgaDma->setDramMemRange(ruby_phys_mem_range);
         }
         gpuDataLoader->syncToMainMem(gen.addr(), p, gen.size());
         ///////////////

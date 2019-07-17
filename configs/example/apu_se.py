@@ -364,8 +364,20 @@ host_cpu = cpu_list[0]
 dispatcher = GpuDispatcher()
 
 ## created by chia-hao
-scga_dma = ScGaDma()
-gpu_data_loader = GpuDataLoader()
+scga_dma = ScGaDma(
+            clk_domain = SrcClockDomain(
+                clock = "200MHz",
+                voltage_domain = VoltageDomain(
+                voltage = options.gpu_voltage)
+                )
+            )
+gpu_data_loader = GpuDataLoader(
+                    clk_domain = SrcClockDomain(
+                        clock = "200MHz",
+                        voltage_domain = VoltageDomain(
+                            voltage = options.gpu_voltage)
+                        )
+                    )
 
 ####################### Create and assign the workload ########################
 # Check for rel_path in elements of base_list using test, returning

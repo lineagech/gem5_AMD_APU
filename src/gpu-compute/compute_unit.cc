@@ -682,21 +682,33 @@ ComputeUnit::DataPort::recvTimingResp(PacketPtr pkt)
     }
 
     // FIX_CHIA-HAO: restore back to original address
+    //if ((pkt->isWrite() || pkt->isRead())) {
     //if (pkt->cmd == MemCmd::ReadReq) {
     GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
-    gpuDataLoader->num_gpu_mem_access++;
-    gpuDataLoader->avgMemAccessLatency =
-        ( (gpuDataLoader->avgMemAccessLatency).value() *
-          ((gpuDataLoader->num_gpu_mem_access)-1) +
-          curTick()-gpuDataLoader->gpuMemAccTick[pkt])
-        / (gpuDataLoader->num_gpu_mem_access);
-    pkt->req->setPaddr(gpuDataLoader->getCpuPageAddr(pkt->req->getPaddr()));
-    if (pkt->isWrite()) {
-        gpuDataLoader->setPageStatus(pkt->getAddr(), GpuDataLoader::Dirty);
+    Addr original_addr = gpuDataLoader->getCpuPageAddr(pkt->req->getPaddr());
+    Addr page_addr = roundDown(original_addr, TheISA::PageBytes);
+    (void)(page_addr);
+    assert(gpuDataLoader->isPageLoaded(page_addr));
+    if (true/*gpuDataLoader->isPageLoaded(pkt->getAddr())*/) {
+        gpuDataLoader->num_gpu_mem_access++;
+        gpuDataLoader->avgMemAccessLatency =
+            ( (gpuDataLoader->avgMemAccessLatency).value() *
+            ((gpuDataLoader->num_gpu_mem_access)-1) +
+            curTick()-gpuDataLoader->gpuMemAccTick[pkt])
+            / (gpuDataLoader->num_gpu_mem_access);
+        DPRINTF(GPUDataLoader, "packet addr %#x\n", pkt->getAddr());
+        DPRINTF(GPUDataLoader, "restore addr %#x to %#x\n",
+                pkt->req->getPaddr(),
+                gpuDataLoader->getCpuPageAddr(pkt->req->getPaddr()) );
+        pkt->req->setPaddr(
+            gpuDataLoader->getCpuPageAddr(pkt->req->getPaddr()));
+        if (pkt->isWrite()) {
+            gpuDataLoader->setPageStatus(pkt->getAddr(), GpuDataLoader::Dirty);
+        }
+        DPRINTF(GPUDataLoader, "gpu mem access latency: %u\n",
+            curTick()-gpuDataLoader->gpuMemAccTick[pkt]);
     }
-    DPRINTF(GPUDataLoader, "gpu mem access latency: %u\n",
-        curTick()-gpuDataLoader->gpuMemAccTick[pkt]);
-    //}
+    ////////////////////////////////////////////////////////////////
 
     EventFunctionWrapper *mem_resp_event =
         computeUnit->memPort[index]->createMemRespEvent(pkt);
@@ -707,6 +719,7 @@ ComputeUnit::DataPort::recvTimingResp(PacketPtr pkt)
 
     // FIX_CHIA-HAO: print the content to check
     uint8_t* debug_data = pkt->getPtr<uint8_t>();
+    (void)(debug_data);
     DPRINTF(GPUDataLoader, "contents: %c %c %c %c %c\n",
                            debug_data[0], debug_data[1],
                            debug_data[2], debug_data[3], debug_data[4]);
@@ -1032,6 +1045,7 @@ ComputeUnit::DataPort::processMemRespEvent(PacketPtr pkt)
     Addr paddr = pkt->req->getPaddr();
 
     if (pkt->cmd != MemCmd::MemFenceResp) {
+        DPRINTF(GPUDataLoader, "%s paddr %#x\n", __func__, paddr);
         int index = gpuDynInst->memStatusVector[paddr].back();
 
         DPRINTF(GPUMem, "Response for addr %#x, index %d\n",
@@ -1166,6 +1180,9 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
         requestCmd = MemCmd::WriteReq;
     } else if (pkt->cmd == MemCmd::SwapResp) {
         requestCmd = MemCmd::SwapReq;
+        DPRINTF(GPUDataLoader,
+                "MemCmd::SwapReq for %#x\n",
+                pkt->req->getPaddr());
     } else {
         panic("unsupported response to request conversion %s\n",
               pkt->cmd.toString());
@@ -1251,11 +1268,13 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
 
     // FIX_CHIA-HAO: set GPU address
     if (requestCmd == MemCmd::ReadReq || requestCmd == MemCmd::WriteReq) {
-        GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
-        pkt->req->setPaddr(
-            gpuDataLoader->getGpuPageAddr(pkt->req->getPaddr())
-        );
+        //GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+        //pkt->req->setPaddr(
+            //gpuDataLoader->getGpuPageAddr(pkt->req->getPaddr())
+        //    0xF00000000
+        //);
     }
+    //////////////////////////////////
 
     // First we must convert the response cmd back to a request cmd so that
     // the request can be sent through the cu's master port
@@ -1281,22 +1300,30 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
     // FIX_CHIA-HAO
     DPRINTF(GPUPort, "Req %u\n", requestCmd==MemCmd::WriteReq);
     DDUMP(GPUPort, new_pkt->getPtr<uint8_t>(), new_pkt->getSize());
-    if (requestCmd == MemCmd::ReadReq || requestCmd == MemCmd::WriteReq) {
+    //if (requestCmd == MemCmd::ReadReq || requestCmd == MemCmd::WriteReq) {
+    if (new_pkt->req->pkt_debug != 9527) {
+        DPRINTF(GPUPort, "\n");
+        assert(true);
+    }
         GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
         gpuDataLoader->numGPUAccesses++;
         gpuDataLoader->gpuMemAccTick[new_pkt] = curTick();
+        Addr virt_page_addr = roundDown(line, TheISA::PageBytes);
 
         GpuDataLoader::GpuDataLoaderState state =
-            gpuDataLoader->getState(line);
+            gpuDataLoader->getState(virt_page_addr);
         bool isPageProcessed =
-            gpuDataLoader->isPageLoaded(line);
+            gpuDataLoader->isPageLoaded(virt_page_addr);
         if (!isPageProcessed ||
-            (isPageProcessed && state == GpuDataLoader::Loading)) {
-            gpuDataLoader->numPageMisses++;
+            (isPageProcessed && state == GpuDataLoader::Loading) ||
+            (isPageProcessed && state == GpuDataLoader::Evicting)) {
+            gpuDataLoader->numMemReqMisses++;
             gpuDataLoader->numCPUAccesses++;
+            DPRINTF(GPUPort, "MemReq Missing %#x\n", line);
         }
         else {
-            gpuDataLoader->numPageHits++;
+            gpuDataLoader->numMemReqHits++;
+            DPRINTF(GPUPort, "MemReq Hits %#x\n", line);
         }
 
         computeUnit->memReqEvent.push({line,mem_req_event});
@@ -1304,7 +1331,7 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
             computeUnit->schedule(computeUnit->pageLoadingEvent,
                                   curTick()+computeUnit->clockPeriod());
         return true;
-    }
+    //}
     //////
 
     computeUnit->schedule(mem_req_event, curTick() +
@@ -1337,7 +1364,21 @@ ComputeUnit::DataPort::processMemReqEvent(PacketPtr pkt)
     ComputeUnit *compute_unit M5_VAR_USED = computeUnit;
 
     // FIX_CHIA-HAO
+    GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+    Addr virt_page_addr = roundDown(pkt->getAddr(), TheISA::PageBytes);
+    if (gpuDataLoader->isPageLoaded(virt_page_addr))
+    {
+        DPRINTF(GPUDataLoader, "%s for addr %#x\n", __func__, pkt->getAddr());
+        //GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+        pkt->req->setPaddr(
+            gpuDataLoader->getGpuPageAddr(pkt->req->getPaddr())
+        );
+        pkt->setAddr(pkt->req->getPaddr());
+        DPRINTF(GPUDataLoader, "reset paddr %#x\n", pkt->req->getPaddr());
+    }
     DPRINTF(GPUDataLoader, "%s for addr %#x\n", __func__, pkt->getAddr());
+
+    /////////////////
 
     if (!(sendTimingReq(pkt))) {
         retries.push_back(std::make_pair(pkt, gpuDynInst));
@@ -2014,11 +2055,20 @@ ComputeUnit::loadingCheck()
         //                       __func__, event.first);
 
         if (!isPageProcessed ||
-            (isPageProcessed && state == GpuDataLoader::Loading)) {
+            (isPageProcessed && state == GpuDataLoader::Loading) ||
+            #if FINITE_GPU_MEM_CAPACITY
+            (isPageProcessed && state == GpuDataLoader::Evicting)) {
+            #endif
             if (!isPageProcessed) {
-                //DPRINTF(GPUDataLoader,
-                //        "ComputeUnit:: starting to load missing page\n");
-                gpuDataLoader->loadPageFromCPU(page_addr);
+                DPRINTF(GPUDataLoader,
+                        "ComputeUnit:: starting to load missing page %#x\n",
+                        page_addr);
+                //gpuDataLoader->loadPageFromCPU(page_addr);
+                gpuDataLoader->handleMissingPage(page_addr);
+            }
+            else if (isPageProcessed && state == GpuDataLoader::Evicting) {
+                DPRINTF(GPUDataLoader,
+                        "The page %#x is being evicted now...\n", page_addr);
             }
             else {
                 //DPRINTF(GPUDataLoader,
@@ -2026,6 +2076,8 @@ ComputeUnit::loadingCheck()
             }
         }
         else {
+            DPRINTF(GPUDataLoader,
+                    "%#x has been loaded\n", page_addr);
             this->schedule(cb_event, curTick() + req_tick_latency);
             memReqEvent.pop();
         }

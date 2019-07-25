@@ -31,7 +31,8 @@ GpuDataLoader::GpuDataLoader(GpuDataLoaderParams *params):
     system(params->sys),
     masterId(params->sys->getMasterId(this)),
     cpuMemRange(params->cpuMemRange),
-    gpuMemRange(params->gpuMemRange)
+    gpuMemRange(params->gpuMemRange),
+    shader(params->shader)
 {
     abstractMem.resize(3);
     abstractMemRange.resize(3);
@@ -49,6 +50,13 @@ GpuDataLoader::GpuDataLoader(GpuDataLoaderParams *params):
 
     num_gpu_mem_access = 0;
     avgMemAccessLatency = 0;
+
+    secondChanceStatus.
+        resize(1024*1024*512*1/*gpuMemRange.size()/pageSize*/, SC_INVALID);
+    secondChanceVec.
+        resize(1024*1024*512*1/*gpuMemRange.size()/pageSize*/);
+    DPRINTF(GPUDataLoader, "total pages number of gpu mem: %u\n",
+            gpuMemRange.size()/pageSize);
 }
 
 GpuDataLoader*
@@ -103,8 +111,8 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
             gathered_data_pos[cpuPageAddr] = 0;
         }
         uint64_t offset = pkt->getAddr() - cpuPageAddr;
-        DPRINTF(GPUDataLoader, "adding offset: %x\n",
-                               gathered_data[cpuPageAddr]+offset);
+        //DPRINTF(GPUDataLoader, "adding offset: %x\n",
+        //                       gathered_data[cpuPageAddr]+offset);
         memcpy(gathered_data[cpuPageAddr] + offset,
                pkt->getPtr<uint8_t>(),
                pkt->getSize());
@@ -152,7 +160,7 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
             #endif
             sumPageLoadLatency += curTick()-tickRecord[cpuPageAddr];
             avgPageLoadLatency = sumPageLoadLatency.value()
-                                    / numUniqPagesLoaded.value();
+                                    / totalPagesLoaded.value();
             DPRINTF(GPUDataLoader, "page load latency %u\n",
                                    curTick() - tickRecord[cpuPageAddr]);
         }
@@ -186,13 +194,19 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
             gathered_data_pos[gpuPageAddr] = 0;
         }
         uint64_t offset = pkt->getAddr() - gpuPageAddr;
-        DPRINTF(GPUDataLoader, "adding offset: %x\n",
-                                gathered_data[gpuPageAddr]+offset);
+        //DPRINTF(GPUDataLoader, "adding offset: %x\n",
+        //                        gathered_data[gpuPageAddr]+offset);
         memcpy(gathered_data[gpuPageAddr] + offset,
                pkt->getPtr<uint8_t>(),
                pkt->getSize());
 
         if (recvRespNum[FROM_GPU][gpuPageAddr] == memReqNum) {
+            auto senderState
+                = dynamic_cast<GpuDataLoader::GDLSenderState*>
+                  (pkt->senderState);
+            (void)(senderState);
+
+            assert(senderState->_checkAddr == getCpuPageAddr(gpuPageAddr));
             savePageToCPU(getCpuPageAddr(gpuPageAddr),
                           gpuPageAddr,
                           gathered_data[gpuPageAddr]);
@@ -226,6 +240,8 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
                 Addr nextLoadPageAddr = toLoadPageAfterEvict[gpuPageAddr];
                 loadPageFromCPU(nextLoadPageAddr);
                 //toLoadPageAfterEvict.erase(gpuPageAddr);
+                gpuAddrMap.erase(cpuPageAddr);
+                //stateMap[cpuPageAddr] = Invalid;
             }
             #endif
 
@@ -295,7 +311,7 @@ GpuDataLoader::loadPageFromCPU(Addr cpuPageAddr)
 
     // if already exists, just return directly
     // TODO: will remove the first condition
-    if (gpuAddrMap.find(cpuPageAddr) != gpuAddrMap.end()
+    if (/*gpuAddrMap.find(cpuPageAddr) != gpuAddrMap.end()*/false
     #if FINITE_GPU_MEM_CAPACITY
      && toLoadPageAfterEvict.find(gpuAddrMap[cpuPageAddr])
             == toLoadPageAfterEvict.end()
@@ -307,8 +323,8 @@ GpuDataLoader::loadPageFromCPU(Addr cpuPageAddr)
     // just or with gpuAddrMask to get valid gpu address
     // temporarily set
     // TODO: get correct gpuPageAddr:
-    // gpuPageAddr = gpuAddrMap[cpuPageAddr]
-    Addr gpuPageAddr = cpuPageAddr | gpuAddrMask;
+    Addr gpuPageAddr = gpuAddrMap[cpuPageAddr];
+    //Addr gpuPageAddr = cpuPageAddr | gpuAddrMask;
 
     // make a correspondance for cpu and gpu address
     gpuAddrMap[cpuPageAddr] = gpuPageAddr;
@@ -353,7 +369,12 @@ GpuDataLoader::loadPageFromCPU(Addr cpuPageAddr)
     }
     recvRespNum[FROM_CPU][cpuPageAddr] = 0;
 
-    numUniqPagesLoaded++;
+    totalPagesLoaded++;
+    if (!uniqPagesSet.count(cpuPageAddr)) {
+        uniqPagesSet.insert(cpuPageAddr);
+        numUniqPagesLoaded++;
+    }
+
     tickRecord[cpuPageAddr] = curTick();
 }
 
@@ -448,6 +469,7 @@ GpuDataLoader::loadPageFromGPU(Addr gpuPageAddr)
         GDLSenderState *reqState = new GDLSenderState();
         reqState->targetCore = GPU;
         reqState->trans = FROM_GPU;
+        reqState->_checkAddr = cpuPageAddr;
         pkt->senderState = reqState;
 
         // send to memory controller
@@ -566,8 +588,11 @@ GpuDataLoader::evictPage(Addr gpuPageAddr)
 void
 GpuDataLoader::evictPage(Addr gpuPageAddr, Addr nextLoadedPageAddr)
 {
-    DPRINTF(GPUDataLoader, "%s for addr %#x\n", gpuPageAddr);
+    DPRINTF(GPUDataLoader, "%s for addr %#x with original CPU addr %#x\n",
+            __func__, gpuPageAddr, cpuAddrMap[gpuPageAddr]);
     toLoadPageAfterEvict[gpuPageAddr] = nextLoadedPageAddr;
+    /* set the status to avoid future requests to this page */
+    stateMap[cpuAddrMap[gpuPageAddr]] = Evicting;
     loadPageFromGPU(gpuPageAddr);
     numEvictedPages++;
 }
@@ -605,7 +630,7 @@ GpuDataLoader::setAbstractMem(std::string name,
                               uint8_t* pmem,
                               AddrRange range)
 {
-    uint8_t type;
+    uint8_t type = 0;
     if (name == "system.mem_ctrls1") {
         type = MemCtrls1;
     }
@@ -757,12 +782,23 @@ GpuDataLoader::regStats()
     numPageHits
         .name(name() + ".numPageHits")
         .desc("Number of hits on GPU access to memory");
+    numMemReqMisses
+        .name(name() + ".numMemReqMisses")
+        .desc("Number of Mem Req missing on GPU access to memory");
+    numMemReqHits
+        .name(name() + ".numMemReqHits")
+        .desc("Number of Mem Req hits on GPU access to memory");
+
     numEvictedPages
         .name(name() + ".numEvictedPages")
         .desc("Number of evited pages from GPU to CPU");
     numUniqPagesLoaded
-        .name(name() + ".numUniqPagesLoaded")
-        .desc("Number of unique pages loaded from CPU");
+        .name(name() + ".numUniqpagesLoaded")
+        .desc("number of unique pages loaded from cpu");
+
+    totalPagesLoaded
+        .name(name() + ".totalPagesLoaded")
+        .desc("number of total pages have loaded from cpu");
 
     sumPageLoadLatency
         .name(name() + ".sumPageLoadLatency")
@@ -794,6 +830,9 @@ GpuDataLoader::handleMissingPage(Addr cpuPageAddr)
 {
     bool isFull = true;
     Addr targetGPUPageAddr;
+
+    DPRINTF(GPUDataLoader, "%s for %#x\n", __func__, cpuPageAddr);
+
     if (gpuAddrMap.find(cpuPageAddr) != gpuAddrMap.end()) {
         return;
     }
@@ -805,9 +844,11 @@ GpuDataLoader::handleMissingPage(Addr cpuPageAddr)
             cpuAddrMap[targetGPUPageAddr] = cpuPageAddr;
             stateMap[cpuPageAddr] = Loading;
             /* set the second chance status */
-            secondChanceVec[i] = cpuPageAddr;
+            secondChanceVec[i] = targetGPUPageAddr;
             secondChanceStatus[i] = SC_TRUE;
             isFull = false;
+            DPRINTF(GPUDataLoader, "Map CPU page %#x to GPU Page %#x\n",
+                    cpuPageAddr, targetGPUPageAddr);
             break;
         }
     }
@@ -823,17 +864,24 @@ GpuDataLoader::handleMissingPage(Addr cpuPageAddr)
         else if (secondChanceStatus[currInd] == SC_FALSE) {
             targetGPUPageAddr = secondChanceVec[currInd];
             /* should evict the page */
-            Addr evictedPageAddr = getGpuPageAddr(targetGPUPageAddr);
+            //Addr evictedPageAddr = getGpuPageAddr(targetGPUPageAddr);
+            Addr evictedPageAddr = targetGPUPageAddr;
             evictPage(evictedPageAddr, cpuPageAddr);
+            DPRINTF(GPUDataLoader,
+                    "Evict GPU page %#x to original CPU page %#x, "
+                    "Load CPU page %#x,"
+                    "currIndex: %u\n",
+                    evictedPageAddr, cpuAddrMap[evictedPageAddr],
+                    cpuPageAddr, currInd);
 
             /* set corresponding GPU page addr */
             gpuAddrMap[cpuPageAddr] = targetGPUPageAddr;
-            cpuAddrMap[targetGPUPageAddr] = cpuPageAddr;
+            //cpuAddrMap[targetGPUPageAddr] = cpuPageAddr;
             stateMap[cpuPageAddr] = Loading;
 
             /* set second chance status to represent the current page
              * will be replaced with the new loaded page */
-            secondChanceVec[currInd] = cpuPageAddr;
+            //secondChanceVec[currInd] = cpuPageAddr;
             secondChanceStatus[currInd] = SC_TRUE;
 
             /* return directly,  after evicting target page,
@@ -846,6 +894,49 @@ GpuDataLoader::handleMissingPage(Addr cpuPageAddr)
     loadPageFromCPU(cpuPageAddr);
 }
 
+void
+GpuDataLoader::countPageHitOrMiss(Addr vaddr)
+{
+    assert((vaddr & ((0x1<<pageSizeBits)-1)) == 0);
+    Process *p = shader->gpuTc->getProcessPtr();
+    Addr paddr;
+    if (!p->pTable->translate(vaddr,paddr)) {
+        if (!p->fixupStackFault(vaddr)) {
+            //assert(true);
+            p->allocateMem(roundDown(vaddr, pageSize), pageSize);
+            auto pte = p->pTable->lookup(vaddr);
+            paddr = pte->paddr;
+        }
+    }
+    DPRINTF(GPUDataLoader, "%s vaddr %#x to paddr %#x\n",
+            __func__, vaddr, paddr);
+    if (gpuAddrMap.find(paddr) == gpuAddrMap.end() ||
+        (isPageLoaded(paddr) && stateMap[paddr]==Loading) ||
+        (isPageLoaded(paddr) && stateMap[paddr]==Evicting) ) {
+        numPageMisses++;
+        DPRINTF(GPUDataLoader, "Page Missing\n");
+    }
+    else {
+        numPageHits++;
+        DPRINTF(GPUDataLoader, "Page Hits\n");
+    }
+}
 
+void
+GpuDataLoader::countVaddrFromDynInst(Addr vaddr)
+{
+    DPRINTF(GPUDataLoader, "%s vaddr %#x\n", __func__, vaddr);
+    vaddr = vaddr & ~((0x1<<pageSizeBits)-1);
+    if (countVaddrSet.find(vaddr) == countVaddrSet.end()) {
+        countVaddrSet.insert(vaddr);
+    }
+}
 
-
+void
+GpuDataLoader::clearStatsForCountVaddr()
+{
+    for (auto vaddr_iter : countVaddrSet) {
+        countPageHitOrMiss(vaddr_iter);
+    }
+    countVaddrSet.clear();
+}

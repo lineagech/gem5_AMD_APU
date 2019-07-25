@@ -14,3 +14,5 @@ class GpuDataLoader(MemObject):
 
     cpuMemRange = Param.AddrRange("")
     gpuMemRange = Param.AddrRange("")
+
+    shader = Param.Shader("")

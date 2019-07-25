@@ -91,6 +91,9 @@ class Request
     typedef uint8_t ArchFlagsType;
     typedef ::Flags<FlagsType> Flags;
 
+    // FIX_CHIA-HAO
+    uint64_t pkt_debug;
+
     enum : FlagsType {
         /**
          * Architecture specific flags.
@@ -828,7 +831,8 @@ class Request
      * Set/Get the time taken to complete this request's access, not including
      *  the time to successfully translate the request.
      */
-    void setAccessLatency() { accessDelta = curTick() - _time - translateDelta; }
+    void setAccessLatency() {
+        accessDelta = curTick() - _time - translateDelta; }
     Tick getAccessLatency() const { return accessDelta; }
 
     /**

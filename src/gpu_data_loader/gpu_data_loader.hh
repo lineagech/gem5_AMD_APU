@@ -3,20 +3,24 @@
 
 #include <queue>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "debug/GPUDataLoader.hh"
+#include "gpu-compute/shader.hh"
 #include "mem/mem_object.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
 #include "params/GpuDataLoader.hh"
 
-//#define pageSizeBits (12)
+#define pageSizeBits (12)
 //#define pageSize (1<<pageSizeBits)
 #define memReqUnit (64)
 #define memReqNum ((pageSize+(memReqUnit-1))/memReqUnit)
 
 #define FINITE_GPU_MEM_CAPACITY (1)
+
+//class Shader;
 
 class GpuDataLoader : public MemObject
 {
@@ -47,6 +51,7 @@ public:
         NotExist = 0,
         Loading,
         Done,
+        Evicting,
         Invalid
     } GpuDataLoaderState;
 
@@ -83,10 +88,26 @@ public:
     bool isEvictAllDone() { return evictAllDone; }
 
     Addr getGpuPageAddr(Addr cpuPageAddr) {
+        #if FINITE_GPU_MEM_CAPACITY
+        DPRINTF(GPUDataLoader, "%s : %#x\n", __func__, cpuPageAddr);
+        Addr _pageAlignedAddr = cpuPageAddr & ~((0x1<<pageSizeBits)-1);
+        Addr _pageOffset = cpuPageAddr & ((0x1<<pageSizeBits)-1);
+        assert(gpuAddrMap.find(_pageAlignedAddr) != gpuAddrMap.end());
+        return gpuAddrMap[_pageAlignedAddr] | _pageOffset;
+        #else
         return (cpuPageAddr | 0x100000000);
+        #endif
     }
     Addr getCpuPageAddr(Addr gpuPageAddr) {
+        #if FINITE_GPU_MEM_CAPACITY
+        DPRINTF(GPUDataLoader, "%s : %#x\n", __func__, gpuPageAddr);
+        Addr _pageAlignedAddr = gpuPageAddr & ~((0x1<<pageSizeBits)-1);
+        Addr _pageOffset = gpuPageAddr & ((0x1<<pageSizeBits)-1);
+        assert(cpuAddrMap.find(_pageAlignedAddr) != cpuAddrMap.end());
+        return cpuAddrMap[_pageAlignedAddr] | _pageOffset;
+        #else
         return (gpuPageAddr & ~(0x100000000));
+        #endif
     }
 
     /* Dirty pages */
@@ -184,6 +205,7 @@ private:
         }
         ProcUnit targetCore;
         LoaderTrans trans;
+        Addr _checkAddr;
     };
 
     void regStats() override;
@@ -197,10 +219,12 @@ private:
     //typedef Addr Capacity;
     uint64_t gpuMemCapacity;
     Addr baseAddr;
+
     /* <CPU Page Addr> */
     std::vector<Addr> secondChanceVec;
     std::vector<SC_Status> secondChanceStatus;
     uint32_t secondChanceInd;
+public:
     void handleMissingPage(Addr cpuPageAddr);
 
 protected:
@@ -214,8 +238,13 @@ public:
     Stats::Scalar numCPUAccesses;
     Stats::Scalar numPageMisses;
     Stats::Scalar numPageHits;
+    Stats::Scalar numMemReqMisses;
+    Stats::Scalar numMemReqHits;
+
     Stats::Scalar numEvictedPages;
     Stats::Scalar numUniqPagesLoaded;
+    Stats::Scalar totalPagesLoaded;
+    std::unordered_set<Addr> uniqPagesSet;
 
     Stats::Scalar sumPageLoadLatency;
     Stats::Scalar avgPageLoadLatency;
@@ -226,6 +255,12 @@ public:
     Stats::Scalar avgMemAccessLatency;
     std::unordered_map<PacketPtr,Tick> gpuMemAccTick;
     uint64_t num_gpu_mem_access;
+
+    Shader* shader;
+    std::unordered_set<Addr> countVaddrSet;
+    void countPageHitOrMiss(Addr vaddr);
+    void countVaddrFromDynInst(Addr vaddr);
+    void clearStatsForCountVaddr();
 };
 
 #endif

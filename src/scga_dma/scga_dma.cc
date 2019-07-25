@@ -1,6 +1,8 @@
 //#include <ctypes>
 #include "scga_dma/scga_dma.hh"
+
 #include <stdint.h>
+
 #include "cpu/base.hh"
 #include "debug/ScGaDMA.hh"
 #include "mem/packet.hh"
@@ -93,6 +95,7 @@ ScGaDma::AddrTransTest(Addr addr, Request::Flags flags, MasterID mid)
     (void)(translation);
 
     Addr Paddr = getPhyAddr(addr, thread);
+    (void)(Paddr);
 
     DPRINTF(ScGaDMA, "AddrTrans: Vaddr %x -> Paddr %x\n", addr, Paddr);
 }

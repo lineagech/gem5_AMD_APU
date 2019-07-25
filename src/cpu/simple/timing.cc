@@ -739,8 +739,9 @@ TimingSimpleCPU::completeIfetch(PacketPtr pkt)
 {
     SimpleExecContext& t_info = *threadInfo[curThread];
 
-    DPRINTF(SimpleCPU, "Complete ICache Fetch for addr %#x\n", pkt ?
-            pkt->getAddr() : 0);
+    DPRINTF(SimpleCPU,
+            "Complete ICache Fetch for addr %#x, _status: %u\n",
+            pkt ? pkt->getAddr() : 0, _status);
 
     // received a response from the icache: execute the received
     // instruction
@@ -850,6 +851,7 @@ TimingSimpleCPU::completeDataAccess(PacketPtr pkt)
     // received a response from the dcache: complete the load or store
     // instruction
     assert(!pkt->isError());
+    DPRINTF(SimpleCPU, "_status :%u\n", _status);
     assert(_status == DcacheWaitResponse || _status == DTBWaitResponse ||
            pkt->req->getFlags().isSet(Request::NO_ACCESS));
 

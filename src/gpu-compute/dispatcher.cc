@@ -358,6 +358,7 @@ GpuDispatcher::notifyWgCompl(Wavefront *w)
     if (ndRangeMap[kern_id].execDone) {
         //GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
         //gpuDataLoader->evictAllPages();
+        DPRINTF(GPUDisp, "ndRangeMap[%d] execDone\n", kern_id);
         EventFunctionWrapper* evictEvent = createEvictCheckEvent(kern_id);
         schedule(evictEvent, curTick() + shader->ticks(1));
         return;
@@ -434,17 +435,23 @@ GpuDispatcher::checkEvictGpuDone(int kern_id)
     GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
 
     // check if all write through is done
-    if (!scgaDma->writeThrReqPending()) {
+    (void)(scgaDma);
+    //if (!scgaDma->writeThrReqPending()) {
         if (!gpuDataLoader->isEvictingAll() &&
             !gpuDataLoader->isEvictAllDone()) {
             gpuDataLoader->evictAllPages();
+            DPRINTF(GPUDisp, "%s: evict all pages\n", __func__);
         }
         else if (!gpuDataLoader->isEvictingAll() &&
                  gpuDataLoader->isEvictAllDone()) {
+            DPRINTF(GPUDisp, "%s: evict done\n", __func__);
             scheduleDispatch();
             return;
         }
-    }
+    //}
+
+    //DPRINTF(GPUDisp, "%s: regular tick for kernel id %d\n",
+    //                 __func__, kern_id);
 
     EventFunctionWrapper* evictEvent = createEvictCheckEvent(kern_id);
     schedule(evictEvent, curTick() + shader->ticks(1));

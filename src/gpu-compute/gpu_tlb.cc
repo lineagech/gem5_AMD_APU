@@ -1335,10 +1335,11 @@ namespace X86ISA
 
             Process *p = sender_state->tc->getProcessPtr();
             Addr vaddr = pkt->req->getVaddr();
-    #ifndef NDEBUG
+    //#ifndef NDEBUG
             Addr alignedVaddr = p->pTable->pageAlign(vaddr);
+            (void)(alignedVaddr);
             assert(alignedVaddr == virtPageAddr);
-    #endif
+    //#endif
             const EmulationPageTable::Entry *pte = p->pTable->lookup(vaddr);
             if (!pte && sender_state->tlbMode != BaseTLB::Execute &&
                     p->fixupStackFault(vaddr)) {

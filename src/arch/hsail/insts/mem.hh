@@ -42,6 +42,7 @@
 #include "arch/hsail/insts/gpu_static_inst.hh"
 #include "arch/hsail/operand.hh"
 #include "gpu-compute/compute_unit.hh"
+#include "gpu_data_loader/gpu_data_loader.hh"
 
 namespace HsailISA
 {
@@ -466,6 +467,12 @@ namespace HsailISA
                                 gpuDynInst->computeUnit()->masterId(),
                                 0, gpuDynInst->wfDynId);
 
+                            // FIX_CHIA-HAO
+                            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+                            gdl->countVaddrFromDynInst(vaddr);
+                            req->pkt_debug = 9527;
+                            ///////////////
+
                             gpuDynInst->setRequestFlags(req);
                             PacketPtr pkt = new Packet(req, MemCmd::ReadReq);
                             pkt->dataStatic(d);
@@ -493,6 +500,11 @@ namespace HsailISA
                     ++d;
                 }
             }
+
+            // FIX_CHIA-HAO
+            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+            gdl->clearStatsForCountVaddr();
+            ///////////////
 
             gpuDynInst->updateStats();
         }
@@ -1071,6 +1083,12 @@ namespace HsailISA
                                 gpuDynInst->computeUnit()->masterId(),
                                 0, gpuDynInst->wfDynId);
 
+                            // FIX_CHIA-HAO
+                            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+                            gdl->countVaddrFromDynInst(vaddr);
+                            req->pkt_debug = 9527;
+                            ///////////////
+
                             gpuDynInst->setRequestFlags(req);
                             PacketPtr pkt = new Packet(req, MemCmd::WriteReq);
                             pkt->dataStatic<c0>(d);
@@ -1086,6 +1104,10 @@ namespace HsailISA
                     ++d;
                 }
             }
+            // FIX_CHIA-HAO
+            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+            gdl->clearStatsForCountVaddr();
+            ///////////////
 
             gpuDynInst->updateStats();
         }
@@ -1628,6 +1650,12 @@ namespace HsailISA
                                         gpuDynInst->makeAtomicOpFunctor<c0>(e,
                                         f));
 
+                        // FIX_CHIA-HAO
+                        GpuDataLoader* gdl = GpuDataLoader::getInstance();
+                        gdl->countVaddrFromDynInst(vaddr);
+                        req->pkt_debug = 9527;
+                        ///////////////
+
                         gpuDynInst->setRequestFlags(req);
                         PacketPtr pkt = new Packet(req, MemCmd::SwapReq);
                         pkt->dataStatic(d);
@@ -1656,6 +1684,11 @@ namespace HsailISA
                 ++e;
                 ++f;
             }
+
+            // FIX_CHIA-HAO
+            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+            gdl->clearStatsForCountVaddr();
+            ///////////////
 
             gpuDynInst->updateStats();
         }

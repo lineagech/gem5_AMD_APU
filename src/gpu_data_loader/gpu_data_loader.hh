@@ -253,8 +253,11 @@ public:
     std::unordered_map<Addr,Tick> tickRecord;
 
     Stats::Scalar avgMemAccessLatency;
+    Stats::Scalar avgHitLatency;
     std::unordered_map<PacketPtr,Tick> gpuMemAccTick;
+    std::unordered_set<PacketPtr> gpuMemHitPkt;
     uint64_t num_gpu_mem_access;
+    uint64_t num_gpu_mem_hits;
 
     Shader* shader;
     std::unordered_set<Addr> countVaddrSet;

@@ -45,7 +45,8 @@ void FaultBase::invoke(ThreadContext * tc, const StaticInstPtr &inst)
     if (FullSystem) {
         DPRINTF(Fault, "Fault %s at PC: %s\n", name(), tc->pcState());
     } else {
-        panic("fault (%s) detected @ PC %s", name(), tc->pcState());
+        // FIX_CHIA-HAO: comment below
+        //panic("fault (%s) detected @ PC %s", name(), tc->pcState());
     }
 }
 
@@ -64,7 +65,8 @@ void SyscallRetryFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
     tc->pcState(tc->pcState());
 }
 
-void GenericPageTableFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
+void GenericPageTableFault::invoke(ThreadContext *tc,
+                                   const StaticInstPtr &inst)
 {
     bool handled = false;
     if (!FullSystem) {
@@ -76,7 +78,8 @@ void GenericPageTableFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
 
 }
 
-void GenericAlignmentFault::invoke(ThreadContext *tc, const StaticInstPtr &inst)
+void GenericAlignmentFault::invoke(ThreadContext *tc,
+                                   const StaticInstPtr &inst)
 {
     panic("Alignment fault when accessing virtual address %#x\n", vaddr);
 }

@@ -708,6 +708,17 @@ ComputeUnit::DataPort::recvTimingResp(PacketPtr pkt)
         DPRINTF(GPUDataLoader, "gpu mem access latency: %u\n",
             curTick()-gpuDataLoader->gpuMemAccTick[pkt]);
     }
+    if (gpuDataLoader->gpuMemHitPkt.find(pkt)
+            != gpuDataLoader->gpuMemHitPkt.end()) {
+        gpuDataLoader->num_gpu_mem_hits++;
+        gpuDataLoader->avgHitLatency =
+            ( (gpuDataLoader->avgHitLatency).value() *
+            ((gpuDataLoader->num_gpu_mem_hits)-1) +
+            curTick()-gpuDataLoader->gpuMemAccTick[pkt])
+            / (gpuDataLoader->num_gpu_mem_hits);
+
+        gpuDataLoader->gpuMemHitPkt.erase(pkt);
+    }
     ////////////////////////////////////////////////////////////////
 
     EventFunctionWrapper *mem_resp_event =
@@ -1323,6 +1334,7 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
         }
         else {
             gpuDataLoader->numMemReqHits++;
+            gpuDataLoader->gpuMemHitPkt.insert(new_pkt);
             DPRINTF(GPUPort, "MemReq Hits %#x\n", line);
         }
 

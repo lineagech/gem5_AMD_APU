@@ -129,15 +129,16 @@ namespace X86ISA
         if (FullSystem) {
             X86Fault::invoke(tc, inst);
         } else {
-            panic("Unrecognized/invalid instruction executed:\n %s",
-                    inst->machInst);
+            //panic("Unrecognized/invalid instruction executed:\n %s",
+            //        inst->machInst);
         }
     }
 
     void PageFault::invoke(ThreadContext * tc, const StaticInstPtr &inst)
     {
         if (FullSystem) {
-            /* Invalidate any matching TLB entries before handling the page fault */
+            /* Invalidate any matching TLB entries before
+             * handling the page fault */
             tc->getITBPtr()->demapPage(addr, 0);
             tc->getDTBPtr()->demapPage(addr, 0);
             HandyM5Reg m5reg = tc->readMiscRegNoEffect(MISCREG_M5_REG);
@@ -307,7 +308,7 @@ namespace X86ISA
         HandyM5Reg m5Reg = tc->readMiscReg(MISCREG_M5_REG);
         if (m5Reg.mode != LegacyMode || m5Reg.submode != RealMode) {
             panic("Startup IPI recived outside of real mode. "
-                    "Don't know what to do. %d, %d", m5Reg.mode, m5Reg.submode);
+                  "Don't know what to do. %d, %d", m5Reg.mode, m5Reg.submode);
         }
 
         tc->setMiscReg(MISCREG_CS, vector << 8);

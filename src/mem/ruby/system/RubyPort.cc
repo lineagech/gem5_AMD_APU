@@ -284,6 +284,13 @@ RubyPort::MemSlavePort::recvTimingReq(PacketPtr pkt)
             return true;
         }
 
+        // FIX_CHIA-HAO
+        if (getOffset(pkt->getAddr()) + pkt->getSize() >
+               RubySystem::getBlockSizeBytes()) {
+            pkt->setAddr(pkt->getAddr() & ~(0x3));
+        }
+        /////////////////
+
         assert(getOffset(pkt->getAddr()) + pkt->getSize() <=
                RubySystem::getBlockSizeBytes());
     }

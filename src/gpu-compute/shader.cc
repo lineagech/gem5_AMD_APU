@@ -48,6 +48,7 @@
 #include "gpu-compute/wavefront.hh"
 #include "mem/packet.hh"
 #include "mem/ruby/system/RubySystem.hh"
+#include "record/thread_recorder.hh"
 #include "sim/sim_exit.hh"
 
 Shader::Shader(const Params *p)
@@ -70,6 +71,8 @@ Shader::Shader(const Params *p)
         assert(i == cuList[i]->cu_id);
         cuList[i]->shader = this;
     }
+
+    threadRecorder::newInstance("MemAccessRecord.csv");
 }
 
 Addr

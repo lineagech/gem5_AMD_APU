@@ -49,12 +49,13 @@ GpuDataLoader::GpuDataLoader(GpuDataLoaderParams *params):
     secondChanceInd = 0;
 
     num_gpu_mem_access = 0;
+    num_gpu_mem_hits = 0;
     avgMemAccessLatency = 0;
 
     secondChanceStatus.
-        resize(1024*1024*512*1/*gpuMemRange.size()/pageSize*/, SC_INVALID);
+        resize(1024*1024*64*1/*gpuMemRange.size()/pageSize*/, SC_INVALID);
     secondChanceVec.
-        resize(1024*1024*512*1/*gpuMemRange.size()/pageSize*/);
+        resize(1024*1024*64*1/*gpuMemRange.size()/pageSize*/);
     DPRINTF(GPUDataLoader, "total pages number of gpu mem: %u\n",
             gpuMemRange.size()/pageSize);
 }
@@ -538,10 +539,10 @@ GpuDataLoader::checkEvictDone()
     /* gpuAddrMap: <cpuAddr, gpuAddr> */
     for (auto addrPair=gpuAddrMap.begin();
          addrPair!=gpuAddrMap.end(); addrPair++) {
+        //DPRINTF(GPUDataLoader, "Debug: %#x\n", addrPair->first);
         Addr gpuAddr = addrPair->second;
         if (stateMap[addrPair->second] == Done &&
             stateMap[addrPair->first] == Invalid) {
-            //gpuAddrMap.erase(addrPair->first);
             eraseAddrVec.push_back(addrPair->first);
             cpuAddrMap.erase(addrPair->second);
             stateMap.erase(addrPair->first);
@@ -605,7 +606,9 @@ GpuDataLoader::evictAllPages()
     evictingAll = true;
     evictAllDone = false;
     for (auto addrPair : gpuAddrMap) {
-        if (stateMap[addrPair.first] == Done) {
+        if (stateMap[addrPair.first] == Done
+        && pageStatusMap[addrPair.second] == Dirty
+           ) {
             evictPage(addrPair.second);
         }
     }
@@ -822,6 +825,11 @@ GpuDataLoader::regStats()
         .name(name() + ".avgMemAccessLatency")
         .desc("Average latency of gpu memory access")
         .precision(2);
+    avgHitLatency
+        .name(name() + ".avgHitLatency")
+        .desc("Average latency of gpu memory hits")
+        .precision(2);
+
 }
 
 

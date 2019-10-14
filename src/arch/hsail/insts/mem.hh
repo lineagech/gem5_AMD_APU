@@ -447,6 +447,10 @@ namespace HsailISA
                     else
                         gpuDynInst->statusVector.push_back(0);
             }
+            
+            // FIX_CHIA-HAO: set current wavefront Id
+            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+            gdl->setAccInfo(gpuDynInst->wavefront()->wfId, sizeof(c0));
 
             for (int k = 0; k < num_dest_operands; ++k) {
 
@@ -468,7 +472,7 @@ namespace HsailISA
                                 0, gpuDynInst->wfDynId);
 
                             // FIX_CHIA-HAO
-                            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+                            gdl = GpuDataLoader::getInstance();
                             gdl->countVaddrFromDynInst(vaddr);
                             req->pkt_debug = 9527;
                             ///////////////
@@ -502,7 +506,7 @@ namespace HsailISA
             }
 
             // FIX_CHIA-HAO
-            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+            gdl = GpuDataLoader::getInstance();
             gdl->clearStatsForCountVaddr();
             ///////////////
 
@@ -1064,6 +1068,10 @@ namespace HsailISA
                     else
                         gpuDynInst->statusVector.push_back(0);
             }
+            
+            // FIX_CHIA-HAO: set current wavefront Id
+            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+            gdl->setAccInfo(gpuDynInst->wavefront()->wfId, sizeof(c0));
 
             for (int k = 0; k < num_src_operands; ++k) {
                 c0 *d = &((c0*)gpuDynInst->d_data)
@@ -1084,7 +1092,7 @@ namespace HsailISA
                                 0, gpuDynInst->wfDynId);
 
                             // FIX_CHIA-HAO
-                            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+                            gdl = GpuDataLoader::getInstance();
                             gdl->countVaddrFromDynInst(vaddr);
                             req->pkt_debug = 9527;
                             ///////////////
@@ -1105,7 +1113,7 @@ namespace HsailISA
                 }
             }
             // FIX_CHIA-HAO
-            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+            gdl = GpuDataLoader::getInstance();
             gdl->clearStatsForCountVaddr();
             ///////////////
 
@@ -1594,6 +1602,10 @@ namespace HsailISA
             c0 *d = &((c0*) gpuDynInst->d_data)[0];
             c0 *e = &((c0*) gpuDynInst->a_data)[0];
             c0 *f = &((c0*) gpuDynInst->x_data)[0];
+            
+            // FIX_CHIA-HAO: set current wavefront Id
+            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+            gdl->setAccInfo(gpuDynInst->wavefront()->wfId, sizeof(c0));
 
             for (int i = 0; i < gpuDynInst->computeUnit()->wfSize(); ++i) {
                 if (gpuDynInst->exec_mask[i]) {
@@ -1651,7 +1663,7 @@ namespace HsailISA
                                         f));
 
                         // FIX_CHIA-HAO
-                        GpuDataLoader* gdl = GpuDataLoader::getInstance();
+                        gdl = GpuDataLoader::getInstance();
                         gdl->countVaddrFromDynInst(vaddr);
                         req->pkt_debug = 9527;
                         ///////////////
@@ -1686,7 +1698,7 @@ namespace HsailISA
             }
 
             // FIX_CHIA-HAO
-            GpuDataLoader* gdl = GpuDataLoader::getInstance();
+            gdl = GpuDataLoader::getInstance();
             gdl->clearStatsForCountVaddr();
             ///////////////
 

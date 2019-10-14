@@ -378,7 +378,7 @@ System::allocPhysPages(int npages)
 
     // FIX_CHIA-HAO
     //DPRINTF(Loader, "System::allocPhysPages %d pages\n", npages);
-    AddrRange gpuRange(0x100000000, 0x1ffffffff);
+    AddrRange gpuRange(0x200000000, 0x2ffffffff);
     if (gpuRange.contains(next_return_addr)) {
         fatal("Occupied by GPU memory\n");
     }

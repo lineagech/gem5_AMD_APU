@@ -16,3 +16,5 @@ class GpuDataLoader(MemObject):
     gpuMemRange = Param.AddrRange("")
 
     shader = Param.Shader("")
+    PageSize = Param.Int(4096, "Page Size") 
+    MemSize = Param.Int(4*1024*1024, "Memory Size")

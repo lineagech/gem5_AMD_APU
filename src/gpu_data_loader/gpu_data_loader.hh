@@ -13,9 +13,9 @@
 #include "mem/port.hh"
 #include "params/GpuDataLoader.hh"
 
-#define pageSizeBits (12)
+#define pageSizeBits (10)
 //#define pageSize (1<<pageSizeBits)
-#define memReqUnit (64)
+#define memReqUnit (128)
 #define memReqNum ((pageSize+(memReqUnit-1))/memReqUnit)
 
 #define FINITE_GPU_MEM_CAPACITY (1)
@@ -81,17 +81,20 @@ public:
     }
 
     /* Evict gpu pages */
+    bool evictingOne;
     bool evictingAll;
     bool evictAllDone;
     void evictAllPages();
+    bool isEvictingOne() { return evictingOne; }
     bool isEvictingAll() { return evictingAll; }
     bool isEvictAllDone() { return evictAllDone; }
 
     Addr getGpuPageAddr(Addr cpuPageAddr) {
         #if FINITE_GPU_MEM_CAPACITY
         DPRINTF(GPUDataLoader, "%s : %#x\n", __func__, cpuPageAddr);
-        Addr _pageAlignedAddr = cpuPageAddr & ~((0x1<<pageSizeBits)-1);
-        Addr _pageOffset = cpuPageAddr & ((0x1<<pageSizeBits)-1);
+        Addr _pageAlignedAddr = cpuPageAddr & (~(pageSize-1));
+        DPRINTF(GPUDataLoader, "%s : %#x\n", __func__, _pageAlignedAddr);
+        Addr _pageOffset = cpuPageAddr & (pageSize-1);
         assert(gpuAddrMap.find(_pageAlignedAddr) != gpuAddrMap.end());
         return gpuAddrMap[_pageAlignedAddr] | _pageOffset;
         #else
@@ -101,8 +104,8 @@ public:
     Addr getCpuPageAddr(Addr gpuPageAddr) {
         #if FINITE_GPU_MEM_CAPACITY
         DPRINTF(GPUDataLoader, "%s : %#x\n", __func__, gpuPageAddr);
-        Addr _pageAlignedAddr = gpuPageAddr & ~((0x1<<pageSizeBits)-1);
-        Addr _pageOffset = gpuPageAddr & ((0x1<<pageSizeBits)-1);
+        Addr _pageAlignedAddr = gpuPageAddr & (~(pageSize-1));
+        Addr _pageOffset = gpuPageAddr & (pageSize-1);
         assert(cpuAddrMap.find(_pageAlignedAddr) != cpuAddrMap.end());
         return cpuAddrMap[_pageAlignedAddr] | _pageOffset;
         #else
@@ -226,7 +229,9 @@ private:
     uint32_t secondChanceInd;
 public:
     void handleMissingPage(Addr cpuPageAddr);
-
+    
+    // second chance
+    void setSecChance(Addr _addr);
 protected:
 
     AddrRange cpuMemRange;
@@ -250,19 +255,30 @@ public:
     Stats::Scalar avgPageLoadLatency;
     Stats::Scalar sumPageEvictLatency;
     Stats::Scalar avgPageEvictLatency;
+
     std::unordered_map<Addr,Tick> tickRecord;
 
     Stats::Scalar avgMemAccessLatency;
     Stats::Scalar avgHitLatency;
+    Stats::Scalar kernelExecTime;
     std::unordered_map<PacketPtr,Tick> gpuMemAccTick;
     std::unordered_set<PacketPtr> gpuMemHitPkt;
     uint64_t num_gpu_mem_access;
     uint64_t num_gpu_mem_hits;
 
     Shader* shader;
+    uint64_t pageSize;
+    uint64_t gpuMemSize;
+    uint64_t cur_tid;
+    uint64_t cur_acc_size;
     std::unordered_set<Addr> countVaddrSet;
+    std::unordered_set<Addr> countBlocksAcc;
     void countPageHitOrMiss(Addr vaddr);
     void countVaddrFromDynInst(Addr vaddr);
+    void setAccInfo(uint64_t _id, uint64_t _size) { 
+        cur_tid = _id; 
+        cur_acc_size = _size;
+    }
     void clearStatsForCountVaddr();
 };
 

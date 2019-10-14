@@ -60,6 +60,10 @@
 #include "mem/page_table.hh"
 #include "sim/process.hh"
 
+// FIX_CHIA-HAO:
+#define PageSize (4096)
+//
+
 ComputeUnit::ComputeUnit(const Params *p) : MemObject(p), fetchStage(p),
     scoreboardCheckStage(p), scheduleStage(p), execStage(p),
     globalMemoryPipe(p), localMemoryPipe(p), rrNextMemID(0), rrNextALUWp(0),
@@ -88,6 +92,8 @@ ComputeUnit::ComputeUnit(const Params *p) : MemObject(p), fetchStage(p),
     _cacheLineSize(p->system->cacheLineSize()),
     globalSeqNum(0), wavefrontSize(p->wfSize),
     kernelLaunchInst(new KernelLaunchStaticInst())
+    // FIX_CHIA-HAO
+    //,PageSize(p->PageSize)
 {
     /**
      * This check is necessary because std::bitset only provides conversion
@@ -686,7 +692,8 @@ ComputeUnit::DataPort::recvTimingResp(PacketPtr pkt)
     //if (pkt->cmd == MemCmd::ReadReq) {
     GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
     Addr original_addr = gpuDataLoader->getCpuPageAddr(pkt->req->getPaddr());
-    Addr page_addr = roundDown(original_addr, TheISA::PageBytes);
+    //Addr page_addr = roundDown(original_addr, TheISA::PageBytes);
+    Addr page_addr = roundDown(original_addr, PageSize);
     (void)(page_addr);
     assert(gpuDataLoader->isPageLoaded(page_addr));
     if (true/*gpuDataLoader->isPageLoaded(pkt->getAddr())*/) {
@@ -702,7 +709,7 @@ ComputeUnit::DataPort::recvTimingResp(PacketPtr pkt)
                 gpuDataLoader->getCpuPageAddr(pkt->req->getPaddr()) );
         pkt->req->setPaddr(
             gpuDataLoader->getCpuPageAddr(pkt->req->getPaddr()));
-        if (pkt->isWrite()) {
+        if (!pkt->isRead()) {
             gpuDataLoader->setPageStatus(pkt->getAddr(), GpuDataLoader::Dirty);
         }
         DPRINTF(GPUDataLoader, "gpu mem access latency: %u\n",
@@ -1319,7 +1326,8 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
         GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
         gpuDataLoader->numGPUAccesses++;
         gpuDataLoader->gpuMemAccTick[new_pkt] = curTick();
-        Addr virt_page_addr = roundDown(line, TheISA::PageBytes);
+        //Addr virt_page_addr = roundDown(line, TheISA::PageBytes);
+        Addr virt_page_addr = roundDown(line, PageSize);
 
         GpuDataLoader::GpuDataLoaderState state =
             gpuDataLoader->getState(virt_page_addr);
@@ -1377,7 +1385,8 @@ ComputeUnit::DataPort::processMemReqEvent(PacketPtr pkt)
 
     // FIX_CHIA-HAO
     GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
-    Addr virt_page_addr = roundDown(pkt->getAddr(), TheISA::PageBytes);
+    //Addr virt_page_addr = roundDown(pkt->getAddr(), TheISA::PageBytes);
+    Addr virt_page_addr = roundDown(pkt->getAddr(), PageSize);
     if (gpuDataLoader->isPageLoaded(virt_page_addr))
     {
         DPRINTF(GPUDataLoader, "%s for addr %#x\n", __func__, pkt->getAddr());
@@ -1386,6 +1395,8 @@ ComputeUnit::DataPort::processMemReqEvent(PacketPtr pkt)
             gpuDataLoader->getGpuPageAddr(pkt->req->getPaddr())
         );
         pkt->setAddr(pkt->req->getPaddr());
+        // Set second chance flag
+        //gpuDataLoader->setSecChance(pkt->req->getPaddr());
         DPRINTF(GPUDataLoader, "reset paddr %#x\n", pkt->req->getPaddr());
     }
     DPRINTF(GPUDataLoader, "%s for addr %#x\n", __func__, pkt->getAddr());
@@ -2056,7 +2067,8 @@ ComputeUnit::loadingCheck()
 
     for (int i=0; i<reqSize; i++) {
         auto event = memReqEvent.front();
-        Addr page_addr = roundDown(event.first, TheISA::PageBytes);
+        //Addr page_addr = roundDown(event.first, TheISA::PageBytes);
+        Addr page_addr = event.first & (~(PageSize-1));
         EventFunctionWrapper *cb_event = event.second;
         GpuDataLoader::GpuDataLoaderState state =
             gpuDataLoader->getState(page_addr);
@@ -2076,7 +2088,10 @@ ComputeUnit::loadingCheck()
                         "ComputeUnit:: starting to load missing page %#x\n",
                         page_addr);
                 //gpuDataLoader->loadPageFromCPU(page_addr);
-                gpuDataLoader->handleMissingPage(page_addr);
+                // There should be no evicting now... 
+                if (!gpuDataLoader->isEvictingOne()) {
+                    gpuDataLoader->handleMissingPage(page_addr);
+                }
             }
             else if (isPageProcessed && state == GpuDataLoader::Evicting) {
                 DPRINTF(GPUDataLoader,
@@ -2086,6 +2101,8 @@ ComputeUnit::loadingCheck()
                 //DPRINTF(GPUDataLoader,
                 //        "ComputeUnit:: missing page is still loading\n");
             }
+            memReqEvent.pop();
+            memReqEvent.push(event);
         }
         else {
             DPRINTF(GPUDataLoader,

@@ -2,11 +2,14 @@
 
 #include "base/chunk_generator.hh"
 #include "debug/GPUDataLoader.hh"
+#include "debug/GDLPageLoading.hh"
 #include "mem/abstract_mem.hh"
 #include "sim/system.hh"
 
-#define pageSizeBits (12)
-#define pageSize (1<<pageSizeBits)
+#include "record/thread_recorder.hh"
+
+//#define pageSizeBits (10)
+//#define pageSize (1<<pageSizeBits)
 
 #define DUMPDATA(Flag, Data) \
 do \
@@ -32,7 +35,9 @@ GpuDataLoader::GpuDataLoader(GpuDataLoaderParams *params):
     masterId(params->sys->getMasterId(this)),
     cpuMemRange(params->cpuMemRange),
     gpuMemRange(params->gpuMemRange),
-    shader(params->shader)
+    shader(params->shader),
+    pageSize(params->PageSize),
+    gpuMemSize(params->MemSize)
 {
     abstractMem.resize(3);
     abstractMemRange.resize(3);
@@ -41,11 +46,12 @@ GpuDataLoader::GpuDataLoader(GpuDataLoaderParams *params):
     blockedPackets.resize(LoaderActNum);
     recvRespNum.resize(LoaderTransNum);
 
+    evictingOne = false;
     evictingAll = false;
     evictAllDone = false;
 
     gpuMemCapacity = 0x100000000;
-    baseAddr = 0x100000000;
+    baseAddr = 0x200000000;
     secondChanceInd = 0;
 
     num_gpu_mem_access = 0;
@@ -53,9 +59,9 @@ GpuDataLoader::GpuDataLoader(GpuDataLoaderParams *params):
     avgMemAccessLatency = 0;
 
     secondChanceStatus.
-        resize(1024*1024*64*1/*gpuMemRange.size()/pageSize*/, SC_INVALID);
+        resize(gpuMemSize/pageSize, SC_INVALID);
     secondChanceVec.
-        resize(1024*1024*64*1/*gpuMemRange.size()/pageSize*/);
+        resize(gpuMemSize/pageSize);
     DPRINTF(GPUDataLoader, "total pages number of gpu mem: %u\n",
             gpuMemRange.size()/pageSize);
 }
@@ -123,6 +129,8 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
             savePageToGPU(cpuPageAddr,
                           getGpuPageAddr(cpuPageAddr),
                           gathered_data[cpuPageAddr]);
+            DPRINTF(GDLPageLoading, "FROM CPU: Loading cpu page %#x\n",
+                                    cpuPageAddr);
         }
         //auto senderState = pkt->popSenderState();
         auto dataPtr = pkt->getPtr<uint8_t>();
@@ -164,6 +172,14 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
                                     / totalPagesLoaded.value();
             DPRINTF(GPUDataLoader, "page load latency %u\n",
                                    curTick() - tickRecord[cpuPageAddr]);
+            DPRINTF(GDLPageLoading, "TO GPU: "
+                                    "Load the page %#x, "
+                                    "To the gpu %#x done\n",
+                                    cpuPageAddr,
+                                    gpuPageAddr);
+            if (evictingOne) {
+                evictingOne = false;
+            }
         }
 
         // update Stats
@@ -243,6 +259,10 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
                 //toLoadPageAfterEvict.erase(gpuPageAddr);
                 gpuAddrMap.erase(cpuPageAddr);
                 //stateMap[cpuPageAddr] = Invalid;
+                DPRINTF(GDLPageLoading, "Evict original Page %#x done, "
+                                        "now loading cpu page %#x\n",
+                                        cpuPageAddr,
+                                        nextLoadPageAddr);
             }
             #endif
 
@@ -287,7 +307,7 @@ GpuDataLoader::handleResponse(PacketPtr pkt, std::string& port)
                                pageStatusMap[gpuPageAddr]);
         //uint64_t offset = pkt->getAddr() - gpuPageAddr;
 
-        if (pageStatusMap[gpuPageAddr] == Dirty)
+        //if (pageStatusMap[gpuPageAddr] == Dirty)
             this->makeDataCoherent(pkt->getAddr(), pkt->getSize());
 
 
@@ -549,10 +569,11 @@ GpuDataLoader::checkEvictDone()
             stateMap.erase(addrPair->second);
 
             pageStatusMap.erase(addrPair->second);
+            secondChanceStatus[(addrPair->second-baseAddr)/pageSize] = SC_INVALID;  
         }
         /* check gpu memory status is dirty or not */
         else if ( pageStatusMap.find(gpuAddr) != pageStatusMap.end()
-            && pageStatusMap[gpuAddr] == Dirty) {
+            /*&& pageStatusMap[gpuAddr] == Dirty*/) {
             allDirtyPagesEvicted = false;
         }
         //else {
@@ -563,7 +584,7 @@ GpuDataLoader::checkEvictDone()
     }
 
     for (auto _addr : eraseAddrVec) {
-        gpuAddrMap.erase(_addr);
+        gpuAddrMap.erase(_addr); 
     }
 
     if (!allDirtyPagesEvicted) {
@@ -581,7 +602,7 @@ GpuDataLoader::evictPage(Addr gpuPageAddr)
 {
     /* will load target page from gpu and
      * move back to cpu */
-    DPRINTF(GPUDataLoader, "%s for addr %#x\n", gpuPageAddr);
+    DPRINTF(GPUDataLoader, "%s for addr %#x\n", __func__, gpuPageAddr);
     loadPageFromGPU(gpuPageAddr);
     numEvictedPages++;
 }
@@ -589,13 +610,15 @@ GpuDataLoader::evictPage(Addr gpuPageAddr)
 void
 GpuDataLoader::evictPage(Addr gpuPageAddr, Addr nextLoadedPageAddr)
 {
-    DPRINTF(GPUDataLoader, "%s for addr %#x with original CPU addr %#x\n",
+    DPRINTF(GDLPageLoading, "%s for addr %#x with original CPU addr %#x\n",
             __func__, gpuPageAddr, cpuAddrMap[gpuPageAddr]);
     toLoadPageAfterEvict[gpuPageAddr] = nextLoadedPageAddr;
     /* set the status to avoid future requests to this page */
     stateMap[cpuAddrMap[gpuPageAddr]] = Evicting;
     loadPageFromGPU(gpuPageAddr);
     numEvictedPages++;
+
+    evictingOne = true;
 }
 
 void
@@ -607,7 +630,7 @@ GpuDataLoader::evictAllPages()
     evictAllDone = false;
     for (auto addrPair : gpuAddrMap) {
         if (stateMap[addrPair.first] == Done
-        && pageStatusMap[addrPair.second] == Dirty
+        //&& pageStatusMap[addrPair.second] == Dirty
            ) {
             evictPage(addrPair.second);
         }
@@ -829,7 +852,10 @@ GpuDataLoader::regStats()
         .name(name() + ".avgHitLatency")
         .desc("Average latency of gpu memory hits")
         .precision(2);
-
+    
+    kernelExecTime
+        .name(name() + ".kernelExecTime")
+        .desc("Kernel Execution Time");
 }
 
 
@@ -839,7 +865,7 @@ GpuDataLoader::handleMissingPage(Addr cpuPageAddr)
     bool isFull = true;
     Addr targetGPUPageAddr;
 
-    DPRINTF(GPUDataLoader, "%s for %#x\n", __func__, cpuPageAddr);
+    DPRINTF(GDLPageLoading, "%s for %#x\n", __func__, cpuPageAddr);
 
     if (gpuAddrMap.find(cpuPageAddr) != gpuAddrMap.end()) {
         return;
@@ -855,7 +881,7 @@ GpuDataLoader::handleMissingPage(Addr cpuPageAddr)
             secondChanceVec[i] = targetGPUPageAddr;
             secondChanceStatus[i] = SC_TRUE;
             isFull = false;
-            DPRINTF(GPUDataLoader, "Map CPU page %#x to GPU Page %#x\n",
+            DPRINTF(GDLPageLoading, "Map CPU page %#x to GPU Page %#x\n",
                     cpuPageAddr, targetGPUPageAddr);
             break;
         }
@@ -875,7 +901,7 @@ GpuDataLoader::handleMissingPage(Addr cpuPageAddr)
             //Addr evictedPageAddr = getGpuPageAddr(targetGPUPageAddr);
             Addr evictedPageAddr = targetGPUPageAddr;
             evictPage(evictedPageAddr, cpuPageAddr);
-            DPRINTF(GPUDataLoader,
+            DPRINTF(GDLPageLoading,
                     "Evict GPU page %#x to original CPU page %#x, "
                     "Load CPU page %#x,"
                     "currIndex: %u\n",
@@ -934,9 +960,12 @@ void
 GpuDataLoader::countVaddrFromDynInst(Addr vaddr)
 {
     DPRINTF(GPUDataLoader, "%s vaddr %#x\n", __func__, vaddr);
-    vaddr = vaddr & ~((0x1<<pageSizeBits)-1);
-    if (countVaddrSet.find(vaddr) == countVaddrSet.end()) {
-        countVaddrSet.insert(vaddr);
+    Addr page_vaddr = vaddr & ~((0x1<<pageSizeBits)-1);
+    if (countVaddrSet.find(page_vaddr) == countVaddrSet.end()) {
+        countVaddrSet.insert(page_vaddr);
+    }
+    if (countBlocksAcc.find(vaddr) == countBlocksAcc.end()) {
+        countBlocksAcc.insert(vaddr);
     }
 }
 
@@ -946,5 +975,19 @@ GpuDataLoader::clearStatsForCountVaddr()
     for (auto vaddr_iter : countVaddrSet) {
         countPageHitOrMiss(vaddr_iter);
     }
+    for (auto vaddr_iter : countBlocksAcc) {
+        auto trd = threadRecorder::getInstance();
+        trd->recordMemAccess( cur_tid, vaddr_iter, cur_acc_size, curTick());   
+    }
+
     countVaddrSet.clear();
+    countBlocksAcc.clear();
 }
+
+void
+GpuDataLoader::setSecChance(Addr _addr)
+{
+    Addr _page_addr = _addr & (~(pageSize-1));
+    secondChanceStatus[_page_addr/pageSize] = SC_TRUE;
+}
+

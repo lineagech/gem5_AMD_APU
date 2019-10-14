@@ -1550,6 +1550,8 @@ namespace X86ISA
     #ifndef NDEBUG
                 Addr alignedVaddr = p->pTable->pageAlign(vaddr);
                 assert(alignedVaddr == virt_page_addr);
+    #else
+                Addr alignedVaddr = 0;                
     #endif
 
                 const EmulationPageTable::Entry *pte =
@@ -1562,6 +1564,12 @@ namespace X86ISA
                 if (!sender_state->prefetch) {
                     // no PageFaults are permitted after
                     // the second page table lookup
+                    
+                    // CHIA-HAO: workaround to handle page faults
+                    if (!pte) {
+                        p->allocateMem(roundDown(alignedVaddr, PageBytes), PageBytes);
+                        pte = p->pTable->lookup(alignedVaddr);
+                    } 
                     assert(pte);
 
                     DPRINTF(GPUTLB, "Mapping %#x to %#x\n", alignedVaddr,

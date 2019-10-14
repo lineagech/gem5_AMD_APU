@@ -4,3 +4,4 @@ SimObject('GPUDataLoader.py')
 Source('gpu_data_loader.cc')
 
 DebugFlag('GPUDataLoader')
+DebugFlag('GDLPageLoading')

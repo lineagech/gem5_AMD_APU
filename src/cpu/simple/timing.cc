@@ -746,7 +746,9 @@ TimingSimpleCPU::completeIfetch(PacketPtr pkt)
     // received a response from the icache: execute the received
     // instruction
     assert(!pkt || !pkt->isError());
-    assert(_status == IcacheWaitResponse);
+    
+    // FIX_CHIA-HAO: comment below to make continuous run
+    //assert(_status == IcacheWaitResponse);
 
     _status = BaseSimpleCPU::Running;
 

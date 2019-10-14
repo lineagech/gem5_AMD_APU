@@ -59,8 +59,8 @@ cl_kernel        readKernel;
 
 // Application datastructures
 const int CACHE_LINE_SIZE = 64;
-size_t grid_size = 512;
-size_t work_group_size = 256;
+size_t grid_size = 512*4;
+size_t work_group_size = 512;
 
 // arguments
 const int code_size = 5;

@@ -7,8 +7,9 @@ from m5.SimObject import SimObject
 class ScGaDma(DmaDevice):
     type = 'ScGaDma'
     cxx_header = 'scga_dma/scga_dma.hh'
-
-    pio_addr = Param.Addr(0x300000000, "Device Address")
+    
+    pio_addr = Param.Addr(0x500000000, "Device Address")
+    #pio_addr = Param.Addr(0x300000000, "Device Address")
     pio_latency = Param.Latency('1ns', "Programmed IO latency")
 
     translation_port = MasterPort('Port to TLB')
@@ -19,3 +20,4 @@ class ScGaDma(DmaDevice):
     writeThrPort = MasterPort("")
 
     cpu = Param.TimingSimpleCPU("")
+    

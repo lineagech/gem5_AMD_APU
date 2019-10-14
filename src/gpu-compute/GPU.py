@@ -165,13 +165,18 @@ class GpuDispatcher(DmaDevice):
     type = 'GpuDispatcher'
     cxx_header = 'gpu-compute/dispatcher.hh'
     # put at 8GB line for now
-    pio_addr = Param.Addr(0x200000000, "Device Address")
+    pio_addr = Param.Addr(0x400000000, "Device Address")
+    #pio_addr = Param.Addr(0x200000000, "Device Address")
     pio_latency = Param.Latency('1ns', "Programmed IO latency")
     shader_pointer = Param.Shader('pointer to shader')
     translation_port = MasterPort('Port to the dispatcher TLB')
     cpu = Param.BaseCPU("CPU to wake up on kernel completion")
 
     cl_driver = Param.ClDriver('pointer to driver')
+    
+    # FIX_CHIA-HAO
+    #PageSize = Param.Int(4096, "Page Size")
+
 
 class MemType(Enum): vals = [
     'M_U8',

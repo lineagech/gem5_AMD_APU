@@ -751,6 +751,9 @@ class ComputeUnit : public MemObject
     uint64_t globalSeqNum;
     int wavefrontSize;
     GPUStaticInst *kernelLaunchInst;
+
+    // FIX_CHIA-HAO
+    //uint64_t PageSize;
 };
 
 #endif // __COMPUTE_UNIT_HH__

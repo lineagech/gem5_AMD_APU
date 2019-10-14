@@ -62,7 +62,8 @@ def define_options(parser):
                       default='2GHz',
                       help="Clock for blocks running at Ruby system's speed")
 
-    parser.add_option("--access-backing-store", action="store_true", default=False,
+    parser.add_option("--access-backing-store", action="store_true",
+                      default=False,
                       help="Should ruby maintain a second copy of memory")
 
     # Options related to cache structure
@@ -125,7 +126,17 @@ def setup_memory_controllers(system, ruby, dir_cntrls, options):
         dir_ranges = []
         ## FIX_CHIA: just map one dir_ctrl to one mem range
         #for r in system.mem_ranges:
-        mem_ctrl = MemConfig.create_mem_ctrl(
+        if mem_index == 1:
+            mem_ctrl = MemConfig.create_mem_ctrl(
+                MemConfig.get("HBM_1000_4H_1x128"),
+                #r,
+                system.mem_ranges[mem_index],
+                index, options.num_dirs,
+                #int(math.log(options.num_dirs, 2)),
+                0,
+                intlv_size)
+        else:
+            mem_ctrl = MemConfig.create_mem_ctrl(
                 MemConfig.get(options.mem_type),
                 #r,
                 system.mem_ranges[mem_index],

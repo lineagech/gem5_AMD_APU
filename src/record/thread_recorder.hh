@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include "base/types.hh"
+#include "debug/ThreadRecord.hh"
 
 class threadRecorder {
 public:

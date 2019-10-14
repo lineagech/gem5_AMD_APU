@@ -238,6 +238,10 @@ GpuDispatcher::write(PacketPtr pkt)
         ++nextId;
 
         dispatchActive = true;
+        
+        // FIX_CHIA-HAO: record kernel start time
+        GpuDataLoader *gdl = GpuDataLoader::getInstance();
+        gdl->kernelExecTime = curTick();
 
         if (!tickEvent.scheduled()) {
             schedule(&tickEvent, curTick() + shader->ticks(1));
@@ -311,6 +315,10 @@ GpuDispatcher::exec()
     DPRINTF(GPUDisp, "Returning %d Kernels\n", doneIds.size());
 
     if (doneIds.size() && cpu) {
+        // FIX_CHIA-HAO: record kernel start time
+        GpuDataLoader *gdl = GpuDataLoader::getInstance();
+        gdl->kernelExecTime = curTick()-gdl->kernelExecTime.value();
+    
         shader->hostWakeUp(cpu);
     }
 
@@ -356,8 +364,8 @@ GpuDispatcher::notifyWgCompl(Wavefront *w)
 
     // FIX_CHIA-HAO: evict pages of gpu
     if (ndRangeMap[kern_id].execDone) {
-        //GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
-        //gpuDataLoader->evictAllPages();
+        GpuDataLoader* gpuDataLoader = GpuDataLoader::getInstance();
+        gpuDataLoader->evictAllPages();
         DPRINTF(GPUDisp, "ndRangeMap[%d] execDone\n", kern_id);
         EventFunctionWrapper* evictEvent = createEvictCheckEvent(kern_id);
         schedule(evictEvent, curTick() + shader->ticks(1));

@@ -1,4 +1,4 @@
-#include "thread_recorder.hh"
+#include "record/thread_recorder.hh"
 
 threadRecorder* threadRecorder::recorder = NULL;
 
@@ -14,11 +14,14 @@ threadRecorder::threadRecorder(std::string& _fileName)
     outStream << "addr,";
     outStream << "size";
     outStream << "\n";
+
+    outStream.flush();
 }
 
 threadRecorder::~threadRecorder()
 {
     outStream.close();
+    //DPRINTF(ThreadRecord, "%s\n", __func__);
 }
 
 void
@@ -42,7 +45,9 @@ threadRecorder::recordMemAccess(
 {
     outStream << _tick << ",";
     outStream << _id << ",";
-    outStream << _addr << ",";
-    outStream << _size << "\n";
+    outStream << std::hex << _addr << ",";
+    outStream << std::dec << _size << "\n";
+
+    outStream.flush();
 }
 

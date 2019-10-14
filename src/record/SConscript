@@ -2,3 +2,5 @@ Import('*')
 
 Source('thread_recorder.cc')
 
+DebugFlag('ThreadRecord')
+
